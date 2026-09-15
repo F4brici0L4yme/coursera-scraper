@@ -4,12 +4,10 @@ Output layout (consistent and readable, per OBJECTIVE.md):
 
     downloads/<course-slug>/<MM>-<module-slug>/<LL>-<lesson-slug>/
         video.mp4                 (single-video lesson)
-        subtitles.<lang>.vtt
-        transcript.txt
+        transcript.txt            (subtitles/transcript in plain-text)
 
 Lessons with more than one video use numbered filenames instead:
         video-<VV>-<video-slug>.mp4
-        subtitles-<VV>-<video-slug>.<lang>.vtt
         transcript-<VV>-<video-slug>.txt
 """
 
@@ -162,14 +160,8 @@ def _resolve_lesson_tasks(client, course, module, lesson, opts) -> tuple[list, d
             elif playlists:
                 tasks.append(("hls", playlists.get("mpeg-dash") or playlists.get("hls"), base / video_name))
 
-        if opts["include_subtitles"]:
-            actual, url = _pick_localized(vinfo.get("subtitlesVtt") or {}, lang)
-            if url:
-                sub_name = f"{stem}-subtitles.{actual}.vtt" if stem else f"subtitles.{actual}.vtt"
-                tasks.append(("text", _abs_url(url), base / sub_name))
-
         if opts["include_transcript"]:
-            actual, url = _pick_localized(vinfo.get("subtitlesTxt") or {}, lang)
+            _, url = _pick_localized(vinfo.get("subtitlesTxt") or {}, lang)
             if url:
                 tr_name = f"{stem}-transcript.txt" if stem else "transcript.txt"
                 tasks.append(("text", _abs_url(url), base / tr_name))

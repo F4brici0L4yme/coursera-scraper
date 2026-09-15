@@ -1,6 +1,6 @@
 # Coursera Scraper
 
-Downloads videos, subtitles, and transcripts for Coursera courses **your account is
+Downloads videos and transcripts for Coursera courses **your account is
 enrolled in**, into an organized local folder tree. No browser automation — it talks
 directly to the same internal `onDemand*` API the Coursera web app uses.
 
@@ -45,23 +45,22 @@ uv run coursera-scraper download some-course-slug --resolution 720p
 ```
 
 Options: `--module`, `--resolution best|1080p|720p|540p|360p|240p`, `--lang en`,
-`--out downloads`, `--concurrency 3`, `--no-video`, `--no-subtitles`, `--no-transcript`.
+`--out downloads`, `--concurrency 3`, `--no-video`, `--no-transcript`.
 
 ## Output layout
 
 ```
 downloads/<course-slug>/<MM>-<module-slug>/<LL>-<lesson-slug>/
     video.mp4              # single-video lesson
-    subtitles.en.vtt
-    transcript.txt
+    transcript.txt         # subtitles/transcript in plain text
 ```
 
 Lessons with several videos use numbered filenames
-(`02-<video-slug>-video.mp4`, `02-<video-slug>-subtitles.en.vtt`, …).
+(`02-<video-slug>-video.mp4`, `02-<video-slug>-transcript.txt`, …).
 
 ## Scope
 
-**Phase 1 (implemented):** lecture videos + subtitles + transcripts.
+**Phase 1 (implemented):** lecture videos + transcripts.
 Quizzes, notebooks, readings and other attachments are detected but skipped.
 Full-specialization support is intentionally not built yet.
 

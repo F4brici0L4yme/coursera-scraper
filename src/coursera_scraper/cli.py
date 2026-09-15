@@ -83,7 +83,6 @@ def cmd_download(args: argparse.Namespace) -> int:
         lang=args.lang,
         out_dir=Path(args.out),
         include_video=not args.no_video,
-        include_subtitles=not args.no_subtitles,
         include_transcript=not args.no_transcript,
         concurrency=args.concurrency,
         cauth=cauth,
@@ -116,7 +115,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument("--out", default="downloads", help="output root (default: downloads)")
     p_dl.add_argument("--cauth", help="CAUTH cookie value (overrides env/file)")
     p_dl.add_argument("--no-video", action="store_true", help="skip video downloads")
-    p_dl.add_argument("--no-subtitles", action="store_true", help="skip subtitles")
     p_dl.add_argument("--no-transcript", action="store_true", help="skip transcripts")
     p_dl.add_argument("--concurrency", type=int, default=3, help="parallel downloads (default: 3)")
     p_dl.set_defaults(func=cmd_download)

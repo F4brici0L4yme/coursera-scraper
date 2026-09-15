@@ -2,7 +2,7 @@
 
 ## Project
 
-Coursera scraper: downloads lecture videos, subtitles and transcripts for courses the
+Coursera scraper: downloads lecture videos and transcripts for courses the
 account is enrolled in, into `downloads/<course-slug>/...`. `OBJECTIVE.md` is the full
 spec; `README.md` documents usage. See `docs/adr/` for technical decisions.
 
@@ -21,8 +21,9 @@ Key facts an agent would otherwise miss:
   `.v2`, items use `contentSummary` not `content`).
 - Lecture media comes from `onDemandLectureVideos.v1/{courseId}~{itemId}` using the
   **item id** (the `item~<id>` segments in a lesson's `elementIds`), not a video id.
-- Subtitle/transcript URLs are **relative** (`/api/subtitleAssetProxy.v1/...`) and must
-  be prefixed with `https://api.coursera.org`.
+- Transcript URLs are **relative** (`/api/subtitleAssetProxy.v1/...`) and must
+  be prefixed with `https://api.coursera.org`. Transcripts come from the
+  `subtitlesTxt` field (plain-text) — the `.vtt`/`.srt` variants are intentionally ignored.
 - Item `typeName == "lecture"` are videos; everything else (supplement, quiz,
   ungradedLab, …) is **out of Phase 1 scope** and skipped.
 
