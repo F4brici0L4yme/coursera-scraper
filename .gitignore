@@ -1,0 +1,20 @@
+# never commit auth tokens, downloaded content, or signed URLs
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# local session / credentials
+auth.json
+*.cookie
+.coursera-scraper/
+
+# downloaded course material
+downloads/
+
+# IDE
+.idea/
+.vscode/
