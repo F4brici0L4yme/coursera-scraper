@@ -2,7 +2,7 @@
 
 ## Project
 
-Coursera scraper: downloads lecture videos and transcripts for courses the
+Coursera scraper: downloads lecture videos, transcripts and readings for courses the
 account is enrolled in, into `downloads/<course-slug>/...`. `OBJECTIVE.md` is the full
 spec; `README.md` documents usage. See `docs/adr/` for technical decisions.
 
@@ -13,6 +13,7 @@ same ones the SPA calls. Media URLs are pre-signed, so downloads work without lo
 
 - `src/coursera_scraper/api.py` — endpoints + client (`CourseraClient`).
 - `src/coursera_scraper/downloader.py` — URL resolution + parallel file download.
+- `src/coursera_scraper/reading.py` — reading HTML/image/plain-text handling.
 - `src/coursera_scraper/cli.py` — `coursera-scraper {auth,download}`.
 
 Key facts an agent would otherwise miss:
@@ -24,8 +25,15 @@ Key facts an agent would otherwise miss:
 - Transcript URLs are **relative** (`/api/subtitleAssetProxy.v1/...`) and must
   be prefixed with `https://api.coursera.org`. Transcripts come from the
   `subtitlesTxt` field (plain-text) — the `.vtt`/`.srt` variants are intentionally ignored.
-- Item `typeName == "lecture"` are videos; everything else (supplement, quiz,
-  ungradedLab, …) is **out of Phase 1 scope** and skipped.
+- Readings come from `onDemandSupplements.v1/{courseId}~{itemId}?includes=asset`
+  (**`includes=asset` is required**); the rendered HTML is in
+  `linked.openCourseAssets.v1[0].definition.renderableHtmlWithMetadata.renderableHtml`,
+  with images already resolved to signed CloudFront URLs. `metadata.hasAssetBlock`
+  flags PDF/asset blocks (rare — none in the courses seen so far).
+- Files are numbered **by item position within the lesson** (unified across videos
+  and readings), matching the Coursera UI order.
+- Item `typeName` handling: `lecture` → video, `supplement` → reading; quiz,
+  ungradedLab, coach, … are skipped.
 
 ## Constraints (from OBJECTIVE.md)
 

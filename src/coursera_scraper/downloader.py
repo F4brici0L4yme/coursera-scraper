@@ -1,14 +1,14 @@
 """Resolve download URLs and write files to disk.
 
-Output layout (consistent and readable, per OBJECTIVE.md):
+Output layout (consistent and readable, per OBJECTIVE.md). Items are numbered
+by their position within the lesson, matching the Coursera UI order:
 
     downloads/<course-slug>/<MM>-<module-slug>/<LL>-<lesson-slug>/
-        video.mp4                 (single-video lesson)
-        transcript.txt            (subtitles/transcript in plain-text)
-
-Lessons with more than one video use numbered filenames instead:
-        video-<VV>-<video-slug>.mp4
-        transcript-<VV>-<video-slug>.txt
+        NN-<video-slug>-video.mp4
+        NN-<video-slug>-transcript.txt
+        NN-<reading-slug>-reading.html
+        NN-<reading-slug>-reading.txt
+        assets/NN-<reading-slug>-img-1.png   (images referenced by readings)
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from typing import Optional
 
 import requests
 
+from . import reading
 from .api import BASE, CourseraClient, CourseraError
 
 RESOLUTION_ORDER = ["1080p", "720p", "540p", "360p", "240p"]
@@ -58,6 +59,17 @@ def _pick_localized(tracks: dict, lang: str) -> tuple[Optional[str], Optional[st
         first = next(iter(tracks.items()))
         return first[0], first[1]
     return None, None
+
+
+def _write_text(dest: Path, content: str) -> str:
+    """Write in-memory text atomically; return 'ok' or 'skip'."""
+    if dest.exists() and dest.stat().st_size > 0:
+        return "skip"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.replace(dest)
+    return "ok"
 
 
 def _download_with_ytdlp(url: str, dest: Path) -> None:
@@ -114,23 +126,47 @@ def _download_file(kind: str, url: str, dest: Path, cauth: Optional[str], retrie
     raise CourseraError(f"Download failed after {retries} attempts: {last_err}") from last_err
 
 
-def _resolve_lesson_tasks(client, course, module, lesson, opts) -> tuple[list, dict[str, int], int]:
-    """Build (kind, url, dest) tasks for every lecture item in a lesson."""
+def _resolve_reading(client, course, item, base, stem, opts) -> tuple[list, dict[str, int]]:
+    """Write a reading's html/txt inline; return image download tasks."""
+    tasks: list[tuple[str, str, Path]] = []
+    counts: dict[str, int] = {}
+
+    definition = client.get_supplement(course.id, item.id)
+    if not definition:
+        return tasks, counts
+    rendered = (definition.get("renderableHtmlWithMetadata") or {}).get("renderableHtml") or ""
+    if not rendered:
+        return tasks, counts
+
+    images: list[tuple[str, str]] = []
+
+    if opts["include_images"]:
+        def name_fn(url, index):
+            ext = reading.guess_ext_from_url(url)
+            local = f"{stem}-img-{index}{ext}"
+            images.append((url, local))
+            return f"assets/{local}"
+
+        new_html, _ = reading.rewrite_image_sources(rendered, name_fn)
+    else:
+        new_html = rendered
+
+    for url, local in images:
+        tasks.append(("text", url, base / "assets" / local))
+
+    counts["reading_html"] = _write_text(base / f"{stem}-reading.html", new_html)
+    counts["reading_txt"] = _write_text(base / f"{stem}-reading.txt", reading.html_to_text(rendered))
+    return tasks, counts
+
+
+def _resolve_lesson_tasks(client, course, module, lesson, opts) -> tuple[list, dict[str, int], int, dict[str, int]]:
+    """Build download tasks for every item in a lesson (unified item numbering)."""
     lang = opts["lang"]
     resolution = opts["resolution"]
     tasks: list[tuple[str, str, Path]] = []
     skipped_types: dict[str, int] = {}
+    inline_counts: dict[str, int] = {}
     locked = 0
-
-    lecture_items = []
-    for item_id in lesson.item_ids:
-        item = course.items.get(item_id)
-        if item is None:
-            continue
-        if item.type_name == "lecture":
-            lecture_items.append(item)
-        else:
-            skipped_types[item.type_name or "unknown"] = skipped_types.get(item.type_name or "unknown", 0) + 1
 
     base = (
         opts["out_dir"]
@@ -139,34 +175,50 @@ def _resolve_lesson_tasks(client, course, module, lesson, opts) -> tuple[list, d
         / f"{opts['lesson_idx']:02d}-{sanitize(lesson.slug) or lesson.id}"
     )
 
-    multi = len(lecture_items) > 1
-    for vi, item in enumerate(lecture_items, start=1):
-        if item.is_locked:
-            locked += 1
+    for nn, item_id in enumerate(lesson.item_ids, start=1):
+        item = course.items.get(item_id)
+        if item is None:
             continue
-        vinfo = client.get_lecture_video(course.id, item.id)
-        if not vinfo:
-            continue
-        sources = vinfo.get("sources") or {}
-        playlists = sources.get("playlists") or {}
+        stem = f"{nn:02d}-{sanitize(item.slug) or item.id}"
 
-        stem = f"{vi:02d}-{sanitize(item.slug) or item.id}" if multi else ""
+        if item.type_name == "lecture":
+            if item.is_locked:
+                locked += 1
+                continue
+            vinfo = client.get_lecture_video(course.id, item.id)
+            if not vinfo:
+                continue
+            sources = vinfo.get("sources") or {}
+            playlists = sources.get("playlists") or {}
 
-        if opts["include_video"]:
-            _, url = pick_video_url(sources, resolution)
-            video_name = f"{stem}-video.mp4" if stem else "video.mp4"
-            if url:
-                tasks.append(("video", url, base / video_name))
-            elif playlists:
-                tasks.append(("hls", playlists.get("mpeg-dash") or playlists.get("hls"), base / video_name))
+            if opts["include_video"]:
+                _, url = pick_video_url(sources, resolution)
+                if url:
+                    tasks.append(("video", url, base / f"{stem}-video.mp4"))
+                elif playlists:
+                    tasks.append(("hls", playlists.get("mpeg-dash") or playlists.get("hls"), base / f"{stem}-video.mp4"))
 
-        if opts["include_transcript"]:
-            _, url = _pick_localized(vinfo.get("subtitlesTxt") or {}, lang)
-            if url:
-                tr_name = f"{stem}-transcript.txt" if stem else "transcript.txt"
-                tasks.append(("text", _abs_url(url), base / tr_name))
+            if opts["include_transcript"]:
+                _, url = _pick_localized(vinfo.get("subtitlesTxt") or {}, lang)
+                if url:
+                    tasks.append(("text", _abs_url(url), base / f"{stem}-transcript.txt"))
 
-    return tasks, skipped_types, locked
+        elif item.type_name == "supplement":
+            if item.is_locked:
+                locked += 1
+                continue
+            if opts["include_readings"]:
+                r_tasks, r_counts = _resolve_reading(client, course, item, base, stem, opts)
+                tasks.extend(r_tasks)
+                for k, v in r_counts.items():
+                    inline_counts[k] = inline_counts.get(k, 0) + (1 if v == "ok" else 0)
+            else:
+                skipped_types["supplement"] = skipped_types.get("supplement", 0) + 1
+
+        else:
+            skipped_types[item.type_name or "unknown"] = skipped_types.get(item.type_name or "unknown", 0) + 1
+
+    return tasks, skipped_types, locked, inline_counts
 
 
 def download_course(client: CourseraClient, slug: str, **opts) -> dict:
@@ -192,19 +244,29 @@ def download_course(client: CourseraClient, slug: str, **opts) -> dict:
     all_tasks: list[tuple[str, str, Path]] = []
     skipped_types: dict[str, int] = {}
     locked = 0
+    inline = 0
 
     for mi, module in selected:
         for li, lesson in enumerate(module.lessons, start=1):
             opt = dict(opts)
             opt["module_idx"] = mi
             opt["lesson_idx"] = li
-            tasks, skipped, lk = _resolve_lesson_tasks(client, course, module, lesson, opt)
+            tasks, skipped, lk, inline_counts = _resolve_lesson_tasks(client, course, module, lesson, opt)
             all_tasks.extend(tasks)
             locked += lk
+            inline += sum(inline_counts.values())
             for k, v in skipped.items():
                 skipped_types[k] = skipped_types.get(k, 0) + v
 
-    results = {"ok": 0, "skip": 0, "failed": 0, "tasks": len(all_tasks), "locked": locked, "skipped_types": skipped_types}
+    results = {
+        "ok": 0,
+        "skip": 0,
+        "failed": 0,
+        "inline": inline,
+        "tasks": len(all_tasks),
+        "locked": locked,
+        "skipped_types": skipped_types,
+    }
     if not all_tasks:
         return results
 

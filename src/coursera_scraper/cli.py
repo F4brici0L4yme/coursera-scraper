@@ -84,6 +84,8 @@ def cmd_download(args: argparse.Namespace) -> int:
         out_dir=Path(args.out),
         include_video=not args.no_video,
         include_transcript=not args.no_transcript,
+        include_readings=not args.no_readings,
+        include_images=not args.no_images,
         concurrency=args.concurrency,
         cauth=cauth,
     )
@@ -91,11 +93,11 @@ def cmd_download(args: argparse.Namespace) -> int:
     print(
         f"\nDone. tasks={results['tasks']} ok={results['ok']} "
         f"skipped={results['skip']} failed={results['failed']} "
-        f"locked={results['locked']}"
+        f"inline={results['inline']} locked={results['locked']}"
     )
     if results.get("skipped_types"):
         detail = ", ".join(f"{k}={v}" for k, v in sorted(results["skipped_types"].items()))
-        print(f"Skipped non-video items (not Phase 1): {detail}")
+        print(f"Skipped items (out of scope): {detail}")
     return 1 if results["failed"] else 0
 
 
@@ -116,6 +118,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument("--cauth", help="CAUTH cookie value (overrides env/file)")
     p_dl.add_argument("--no-video", action="store_true", help="skip video downloads")
     p_dl.add_argument("--no-transcript", action="store_true", help="skip transcripts")
+    p_dl.add_argument("--no-readings", action="store_true", help="skip readings")
+    p_dl.add_argument("--no-images", action="store_true", help="skip images embedded in readings")
     p_dl.add_argument("--concurrency", type=int, default=3, help="parallel downloads (default: 3)")
     p_dl.set_defaults(func=cmd_download)
 

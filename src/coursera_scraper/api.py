@@ -43,6 +43,10 @@ MEMBERSHIPS = (
     "&q=me&showHidden=true&filter=current,preEnrolled"
 )
 
+SUPPLEMENTS = (
+    BASE + "/api/onDemandSupplements.v1/{course_id}~{item_id}?includes=asset"
+)
+
 
 class CourseraError(Exception):
     """Base error for API failures."""
@@ -158,6 +162,19 @@ class CourseraClient:
         data = self._get_json(LECTURE_VIDEOS.format(course_id=course_id, item_id=item_id))
         videos = (data.get("linked") or {}).get("onDemandVideos.v1") or []
         return videos[0] if videos else None
+
+    def get_supplement(self, course_id: str, item_id: str) -> Optional[dict]:
+        """Return the rendered definition of a reading/supplement item, or None.
+
+        The definition carries ``renderableHtmlWithMetadata`` (rendered HTML +
+        flags) and the raw CML ``value``.
+        """
+        data = self._get_json(SUPPLEMENTS.format(course_id=course_id, item_id=item_id))
+        assets = (data.get("linked") or {}).get("openCourseAssets.v1") or []
+        for asset in assets:
+            if asset.get("typeName") == "cml":
+                return asset.get("definition")
+        return None
 
     def enrolled_slugs(self) -> set[str]:
         """Return the set of course slugs the account is enrolled in (needs CAUTH)."""
