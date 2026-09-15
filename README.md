@@ -46,7 +46,7 @@ uv run coursera-scraper download some-course-slug --resolution 720p
 
 Options: `--module`, `--resolution best|1080p|720p|540p|360p|240p`, `--lang en`,
 `--out downloads`, `--concurrency 3`, `--no-video`, `--no-transcript`,
-`--no-readings`, `--no-images`.
+`--no-readings`, `--no-images`, `--no-slides`.
 
 ## Output layout
 
@@ -56,6 +56,7 @@ Items are numbered by their position within the lesson (matching the Coursera UI
 downloads/<course-slug>/<MM>-<module-slug>/<LL>-<lesson-slug>/
     NN-<video-slug>-video.mp4
     NN-<video-slug>-transcript.txt
+    NN-<video-slug>-slides-N.pdf      # slides/PDFs attached to the video (when present)
     NN-<reading-slug>-reading.html      # faithful HTML, images rewritten to assets/
     NN-<reading-slug>-reading.txt       # plain text
     assets/NN-<reading-slug>-img-N.png  # images embedded in the reading
@@ -66,7 +67,9 @@ downloads/<course-slug>/<MM>-<module-slug>/<LL>-<lesson-slug>/
 - **Phase 1 (implemented):** lecture videos + transcripts.
 - **Phase 2 (implemented):** readings (as HTML + plain text, with embedded images
   downloaded). Code blocks are preserved in the HTML.
-- Quizzes, notebooks, and other attachments are detected but skipped.
+- **Phase 3 (implemented):** slides/PDFs attached to videos.
+- Quizzes (`staffGraded`/`ungradedAssignment`), notebooks, and other attachments are
+  detected but skipped — see [docs/adr/0002-quiz-limitations.md](docs/adr/0002-quiz-limitations.md).
 - Full-specialization support is intentionally not built yet.
 
 ## Approach

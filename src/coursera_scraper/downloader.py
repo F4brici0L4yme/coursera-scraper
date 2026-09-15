@@ -203,6 +203,14 @@ def _resolve_lesson_tasks(client, course, module, lesson, opts) -> tuple[list, d
                 if url:
                     tasks.append(("text", _abs_url(url), base / f"{stem}-transcript.txt"))
 
+            if opts["include_slides"]:
+                asset_ids = client.get_lecture_assets(course.id, item.id)
+                for si, f in enumerate(client.get_asset_files(asset_ids), start=1):
+                    ext = Path(f["name"]).suffix.lstrip(".").lower()
+                    if not ext or len(ext) > 10:
+                        ext = (f.get("type_name") or "bin").lower()
+                    tasks.append(("text", f["url"], base / f"{stem}-slides-{si}.{ext}"))
+
         elif item.type_name == "supplement":
             if item.is_locked:
                 locked += 1

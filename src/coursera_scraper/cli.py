@@ -86,6 +86,7 @@ def cmd_download(args: argparse.Namespace) -> int:
         include_transcript=not args.no_transcript,
         include_readings=not args.no_readings,
         include_images=not args.no_images,
+        include_slides=not args.no_slides,
         concurrency=args.concurrency,
         cauth=cauth,
     )
@@ -120,6 +121,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument("--no-transcript", action="store_true", help="skip transcripts")
     p_dl.add_argument("--no-readings", action="store_true", help="skip readings")
     p_dl.add_argument("--no-images", action="store_true", help="skip images embedded in readings")
+    p_dl.add_argument("--no-slides", action="store_true", help="skip slides/PDFs attached to videos")
     p_dl.add_argument("--concurrency", type=int, default=3, help="parallel downloads (default: 3)")
     p_dl.set_defaults(func=cmd_download)
 

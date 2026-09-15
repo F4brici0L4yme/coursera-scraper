@@ -30,10 +30,17 @@ Key facts an agent would otherwise miss:
   `linked.openCourseAssets.v1[0].definition.renderableHtmlWithMetadata.renderableHtml`,
   with images already resolved to signed CloudFront URLs. `metadata.hasAssetBlock`
   flags PDF/asset blocks (rare — none in the courses seen so far).
+- Lecture slides/PDFs come from `onDemandLectureAssets.v1/{courseId}~{itemId}`
+  (`linked.openCourseAssets.v1[].definition.assetId`), then resolved via
+  `assets.v1?ids=<comma-joined>` (returns `name`, `typeName`, `url.url`). Strip any
+  trailing `@N` suffix from the asset id.
+- Quizzes (`staffGraded`, `ungradedAssignment`) are **NOT** reachable via REST — they
+  use the GraphQL gateway and need a `CSRF3-Token` cookie. Skipped; see
+  `docs/adr/0002-quiz-limitations.md`.
 - Files are numbered **by item position within the lesson** (unified across videos
   and readings), matching the Coursera UI order.
-- Item `typeName` handling: `lecture` → video, `supplement` → reading; quiz,
-  ungradedLab, coach, … are skipped.
+- Item `typeName` handling: `lecture` → video (+ slides/transcript), `supplement` →
+  reading; quiz, ungradedLab, coach, … are skipped.
 
 ## Constraints (from OBJECTIVE.md)
 

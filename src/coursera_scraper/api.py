@@ -47,6 +47,12 @@ SUPPLEMENTS = (
     BASE + "/api/onDemandSupplements.v1/{course_id}~{item_id}?includes=asset"
 )
 
+LECTURE_ASSETS = (
+    BASE + "/api/onDemandLectureAssets.v1/{course_id}~{item_id}/?includes=openCourseAssets"
+)
+
+ASSETS_V1 = BASE + "/api/assets.v1?ids={ids}"
+
 
 class CourseraError(Exception):
     """Base error for API failures."""
@@ -175,6 +181,34 @@ class CourseraClient:
             if asset.get("typeName") == "cml":
                 return asset.get("definition")
         return None
+
+    def get_lecture_assets(self, course_id: str, item_id: str) -> list[str]:
+        """Return the asset ids (slides/PDFs) attached to a lecture."""
+        data = self._get_json(LECTURE_ASSETS.format(course_id=course_id, item_id=item_id))
+        assets = (data.get("linked") or {}).get("openCourseAssets.v1") or []
+        ids = []
+        for asset in assets:
+            asset_id = (asset.get("definition") or {}).get("assetId")
+            if asset_id:
+                # ids may carry a trailing "@N" version suffix to strip
+                ids.append(asset_id.split("@")[0])
+        return ids
+
+    def get_asset_files(self, asset_ids: list[str]) -> list[dict]:
+        """Resolve asset ids to signed download URLs.
+
+        Returns a list of ``{"name", "url", "type_name"}`` dicts.
+        """
+        if not asset_ids:
+            return []
+        data = self._get_json(ASSETS_V1.format(ids=",".join(asset_ids)))
+        files = []
+        for element in data.get("elements") or []:
+            url = (element.get("url") or {}).get("url")
+            name = element.get("name") or ""
+            if url:
+                files.append({"name": name, "url": url, "type_name": element.get("typeName")})
+        return files
 
     def enrolled_slugs(self) -> set[str]:
         """Return the set of course slugs the account is enrolled in (needs CAUTH)."""
