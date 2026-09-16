@@ -14,7 +14,8 @@ same ones the SPA calls. Media URLs are pre-signed, so downloads work without lo
 - `src/coursera_scraper/api.py` — endpoints + client (`CourseraClient`).
 - `src/coursera_scraper/downloader.py` — URL resolution + parallel file download.
 - `src/coursera_scraper/reading.py` — reading HTML/image/plain-text handling.
-- `src/coursera_scraper/cli.py` — `coursera-scraper {auth,download}`.
+- `src/coursera_scraper/ui.py` — interactive TUI (Textual; optional `ui` extra).
+- `src/coursera_scraper/cli.py` — `coursera-scraper {auth,download}` + TUI launcher.
 
 Key facts an agent would otherwise miss:
 
@@ -41,6 +42,9 @@ Key facts an agent would otherwise miss:
   and readings), matching the Coursera UI order.
 - Item `typeName` handling: `lecture` → video (+ slides/transcript), `supplement` →
   reading; quiz, ungradedLab, coach, … are skipped.
+- `download_course(..., progress=cb)` emits events (`start`/`file`/`bytes`) instead of
+  printing; both the CLI (print callback) and TUI (Textual worker + `call_from_thread`)
+  consume the same function. `coursera-scraper` with no args launches the TUI.
 
 ## Constraints (from OBJECTIVE.md)
 
@@ -59,7 +63,9 @@ Use **uv** (not raw venv/pip — Arch is PEP 668 externally-managed):
 
 ```bash
 uv sync                                    # creates .venv + installs package
+uv sync --extra ui                         # adds Textual (interactive TUI)
 uv sync --extra hls                        # adds yt-dlp for HLS/DASH-only courses
+uv run coursera-scraper                    # interactive TUI
 uv run coursera-scraper download <slug-or-url> [--module 1] [--resolution 720p]
 uv run coursera-scraper auth               # store CAUTH locally
 uv run ruff check src/                     # lint (ruff is a dev dependency)

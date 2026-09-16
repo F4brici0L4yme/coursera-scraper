@@ -96,7 +96,14 @@ def _download_with_ytdlp(url: str, dest: Path) -> None:
     tmp_dir.rmdir()
 
 
-def _download_file(kind: str, url: str, dest: Path, cauth: str | None, retries: int = 3) -> str:
+def _download_file(
+    kind: str,
+    url: str,
+    dest: Path,
+    cauth: str | None,
+    progress=None,
+    retries: int = 3,
+) -> str:
     """Download a single file; return 'ok' or 'skip'. Raises on final failure."""
     if dest.exists() and dest.stat().st_size > 0:
         return "skip"
@@ -112,9 +119,20 @@ def _download_file(kind: str, url: str, dest: Path, cauth: str | None, retries: 
         try:
             with requests.get(url, stream=True, timeout=60, cookies=cookies) as resp:
                 resp.raise_for_status()
+                buf = 0
+                last_emit = time.monotonic()
                 with open(tmp, "wb") as f:
                     for chunk in resp.iter_content(chunk_size=1 << 16):
                         f.write(chunk)
+                        if progress:
+                            buf += len(chunk)
+                            now = time.monotonic()
+                            if now - last_emit >= 0.25:
+                                progress({"type": "bytes", "delta": buf})
+                                buf = 0
+                                last_emit = now
+                if progress and buf:
+                    progress({"type": "bytes", "delta": buf})
             tmp.replace(dest)
             return "ok"
         except Exception as exc:
@@ -240,8 +258,14 @@ def _resolve_lesson_tasks(
     return tasks, skipped_types, locked, inline_counts
 
 
-def download_course(client: CourseraClient, slug: str, **opts) -> dict:
-    """Download a whole course (or a single module via opts['module_filter'])."""
+def download_course(client: CourseraClient, slug: str, progress=None, **opts) -> dict:
+    """Download a whole course (or a single module via opts['module_filter']).
+
+    ``progress`` is an optional callable receiving event dicts:
+        {"type": "start", "total": int}
+        {"type": "file", "dest": str, "status": str, "error": str|None, "size": int}
+        {"type": "bytes", "delta": int}   # throttled download throughput
+    """
     course = client.get_course(slug)
 
     module_filter = opts.get("module_filter")
@@ -291,22 +315,35 @@ def download_course(client: CourseraClient, slug: str, **opts) -> dict:
     if not all_tasks:
         return results
 
+    if progress:
+        progress({"type": "start", "total": len(all_tasks)})
+
     cauth = opts["cauth"]
     concurrency = opts.get("concurrency", 3)
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = {
-            pool.submit(_download_file, kind, url, dest, cauth): dest
+            pool.submit(_download_file, kind, url, dest, cauth, progress): dest
             for kind, url, dest in all_tasks
         }
         for fut in as_completed(futures):
             dest = futures[fut]
+            error: str | None = None
             try:
                 status = fut.result()
             except Exception as exc:
                 status = "failed"
-                print(f"  FAILED {dest.name}: {exc}")
+                error = str(exc)
             results[status] = results.get(status, 0) + 1
-            if status == "ok":
-                print(f"  ok     {dest.relative_to(opts['out_dir'])}")
+            size = dest.stat().st_size if dest.exists() else 0
+            if progress:
+                progress(
+                    {
+                        "type": "file",
+                        "dest": str(dest.relative_to(opts["out_dir"])),
+                        "status": status,
+                        "error": error,
+                        "size": size,
+                    }
+                )
 
     return results

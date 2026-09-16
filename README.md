@@ -8,8 +8,23 @@ directly to the same internal `onDemand*` API the Coursera web app uses.
 
 ```bash
 uv sync                     # creates .venv, installs deps + the `coursera-scraper` script
+uv sync --extra ui          # add Textual for the interactive TUI
 uv sync --extra hls         # add yt-dlp for courses that only serve HLS/DASH streams
 ```
+
+## Interactive TUI
+
+Run the scraper with no arguments to open the interactive terminal UI:
+
+```bash
+uv run coursera-scraper
+```
+
+It walks you through: pick a course (search, or paste a slug/URL) → select modules →
+choose options (resolution, language, content types) → watch progress with live
+throughput and ETA. Requires `uv sync --extra ui`.
+
+The CLI subcommands (`download`, `auth`) remain available for scripting/automation.
 
 ## Auth (optional but recommended)
 

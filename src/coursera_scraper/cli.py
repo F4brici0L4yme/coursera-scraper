@@ -46,6 +46,14 @@ def cmd_auth(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_progress(event: dict) -> None:
+    if event["type"] == "file":
+        if event["status"] == "ok":
+            print(f"  ok     {event['dest']}")
+        elif event["status"] == "failed":
+            print(f"  FAILED {event['dest']}: {event['error']}")
+
+
 def cmd_download(args: argparse.Namespace) -> int:
     slug = extract_slug(args.course)
     cauth = load_cauth(args.cauth)
@@ -77,6 +85,7 @@ def cmd_download(args: argparse.Namespace) -> int:
     results = download_course(
         client,
         slug,
+        progress=_print_progress,
         module_filter=module_filter,
         resolution=args.resolution,
         lang=args.lang,
@@ -103,9 +112,10 @@ def cmd_download(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="coursera-scraper", description="Download Coursera course media."
+        prog="coursera-scraper",
+        description="Download Coursera course media. Run with no command for the interactive TUI.",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command")
 
     p_auth = sub.add_parser("auth", help="save the CAUTH cookie locally")
     p_auth.add_argument("--cauth", help="CAUTH cookie value (prompts if omitted)")
@@ -133,9 +143,24 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def launch_tui() -> int:
+    try:
+        from .ui import run_ui
+    except ImportError:
+        print(
+            "The interactive TUI requires the 'textual' package.\n"
+            "Install it with:  uv sync --extra ui",
+            file=sys.stderr,
+        )
+        return 1
+    return run_ui()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command is None:
+        return launch_tui()
     try:
         return args.func(args)
     except CourseraError as exc:

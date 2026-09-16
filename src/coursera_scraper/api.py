@@ -215,9 +215,16 @@ class CourseraClient:
                 files.append({"name": name, "url": url, "type_name": element.get("typeName")})
         return files
 
+    def enrolled_courses(self) -> list[tuple[str, str]]:
+        """Return the account's enrolled courses as ``(slug, name)`` pairs (needs CAUTH)."""
+        data = self._get_json(MEMBERSHIPS)
+        out = []
+        for c in (data.get("linked") or {}).get("courses.v1", []):
+            slug = c.get("slug")
+            if slug:
+                out.append((slug, c.get("name") or slug))
+        return out
+
     def enrolled_slugs(self) -> set[str]:
         """Return the set of course slugs the account is enrolled in (needs CAUTH)."""
-        data = self._get_json(MEMBERSHIPS)
-        return {
-            c.get("slug") for c in (data.get("linked") or {}).get("courses.v1", []) if c.get("slug")
-        }
+        return {slug for slug, _ in self.enrolled_courses()}
