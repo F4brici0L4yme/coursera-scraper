@@ -10,7 +10,7 @@ import re
 import sys
 from pathlib import Path
 
-from .api import CourseraClient, CourseraError, NotEnrolledError
+from .api import CourseraClient, CourseraError
 from .downloader import download_course
 
 AUTH_FILE = Path.home() / ".coursera-scraper" / "auth.json"
@@ -64,8 +64,7 @@ def cmd_download(args: argparse.Namespace) -> int:
             enrolled = client.enrolled_slugs()
             if enrolled and slug not in enrolled:
                 print(
-                    f"warning: '{slug}' is not in your enrolled courses list. "
-                    "Proceeding anyway.",
+                    f"warning: '{slug}' is not in your enrolled courses list. Proceeding anyway.",
                     file=sys.stderr,
                 )
         except CourseraError as exc:
@@ -103,7 +102,9 @@ def cmd_download(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="coursera-scraper", description="Download Coursera course media.")
+    parser = argparse.ArgumentParser(
+        prog="coursera-scraper", description="Download Coursera course media."
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_auth = sub.add_parser("auth", help="save the CAUTH cookie locally")
@@ -113,7 +114,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl = sub.add_parser("download", help="download a course (or one module)")
     p_dl.add_argument("course", help="course URL or slug")
     p_dl.add_argument("--module", help="limit to one module: 1-based index or slug")
-    p_dl.add_argument("--resolution", default="best", help="best|1080p|720p|540p|360p|240p (default: best)")
+    p_dl.add_argument(
+        "--resolution", default="best", help="best|1080p|720p|540p|360p|240p (default: best)"
+    )
     p_dl.add_argument("--lang", default="en", help="subtitle language code (default: en)")
     p_dl.add_argument("--out", default="downloads", help="output root (default: downloads)")
     p_dl.add_argument("--cauth", help="CAUTH cookie value (overrides env/file)")
@@ -121,7 +124,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument("--no-transcript", action="store_true", help="skip transcripts")
     p_dl.add_argument("--no-readings", action="store_true", help="skip readings")
     p_dl.add_argument("--no-images", action="store_true", help="skip images embedded in readings")
-    p_dl.add_argument("--no-slides", action="store_true", help="skip slides/PDFs attached to videos")
+    p_dl.add_argument(
+        "--no-slides", action="store_true", help="skip slides/PDFs attached to videos"
+    )
     p_dl.add_argument("--concurrency", type=int, default=3, help="parallel downloads (default: 3)")
     p_dl.set_defaults(func=cmd_download)
 
@@ -133,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except (CourseraError, NotEnrolledError) as exc:
+    except CourseraError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

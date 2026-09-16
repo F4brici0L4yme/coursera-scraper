@@ -9,7 +9,6 @@ checks and access to otherwise gated content.
 from __future__ import annotations
 
 import dataclasses
-from typing import Optional
 
 import requests
 
@@ -43,9 +42,7 @@ MEMBERSHIPS = (
     "&q=me&showHidden=true&filter=current,preEnrolled"
 )
 
-SUPPLEMENTS = (
-    BASE + "/api/onDemandSupplements.v1/{course_id}~{item_id}?includes=asset"
-)
+SUPPLEMENTS = BASE + "/api/onDemandSupplements.v1/{course_id}~{item_id}?includes=asset"
 
 LECTURE_ASSETS = (
     BASE + "/api/onDemandLectureAssets.v1/{course_id}~{item_id}/?includes=openCourseAssets"
@@ -62,19 +59,13 @@ class AuthError(CourseraError):
     """Session missing or expired (401/403 from the API)."""
 
 
-class NotEnrolledError(CourseraError):
-    """The account is not enrolled in the requested course."""
-
-
 @dataclasses.dataclass
 class Item:
     id: str
     name: str
     slug: str
-    type_name: Optional[str]
+    type_name: str | None
     is_locked: bool
-    module_id: Optional[str]
-    lesson_id: Optional[str]
 
 
 @dataclasses.dataclass
@@ -102,7 +93,7 @@ class Course:
 
 
 class CourseraClient:
-    def __init__(self, cauth: Optional[str] = None):
+    def __init__(self, cauth: str | None = None):
         self.session = requests.Session()
         self.session.headers["User-Agent"] = USER_AGENT
         self.cauth = cauth
@@ -127,7 +118,9 @@ class CourseraClient:
         linked = data.get("linked") or {}
 
         modules_by_id = {m["id"]: m for m in linked.get("onDemandCourseMaterialModules.v1", [])}
-        lessons_by_id = {l["id"]: l for l in linked.get("onDemandCourseMaterialLessons.v1", [])}
+        lessons_by_id = {
+            lsn["id"]: lsn for lsn in linked.get("onDemandCourseMaterialLessons.v1", [])
+        }
         items_by_id = {i["id"]: i for i in linked.get("onDemandCourseMaterialItems.v2", [])}
 
         course_id = elements[0]["id"]
@@ -146,8 +139,22 @@ class CourseraClient:
                     for e in les.get("elementIds", [])
                     if isinstance(e, str) and e.startswith("item~")
                 ]
-                lessons.append(Lesson(id=lesson_id, name=les.get("name", ""), slug=les.get("slug", ""), item_ids=item_ids))
-            modules.append(Module(id=module_id, name=mod.get("name", ""), slug=mod.get("slug", ""), lessons=lessons))
+                lessons.append(
+                    Lesson(
+                        id=lesson_id,
+                        name=les.get("name", ""),
+                        slug=les.get("slug", ""),
+                        item_ids=item_ids,
+                    )
+                )
+            modules.append(
+                Module(
+                    id=module_id,
+                    name=mod.get("name", ""),
+                    slug=mod.get("slug", ""),
+                    lessons=lessons,
+                )
+            )
 
         items: dict[str, Item] = {}
         for item_id, it in items_by_id.items():
@@ -158,18 +165,16 @@ class CourseraClient:
                 slug=it.get("slug", ""),
                 type_name=content.get("typeName"),
                 is_locked=bool(it.get("isLocked")),
-                module_id=it.get("moduleId"),
-                lesson_id=it.get("lessonId"),
             )
 
         return Course(id=course_id, slug=slug, modules=modules, items=items)
 
-    def get_lecture_video(self, course_id: str, item_id: str) -> Optional[dict]:
+    def get_lecture_video(self, course_id: str, item_id: str) -> dict | None:
         data = self._get_json(LECTURE_VIDEOS.format(course_id=course_id, item_id=item_id))
         videos = (data.get("linked") or {}).get("onDemandVideos.v1") or []
         return videos[0] if videos else None
 
-    def get_supplement(self, course_id: str, item_id: str) -> Optional[dict]:
+    def get_supplement(self, course_id: str, item_id: str) -> dict | None:
         """Return the rendered definition of a reading/supplement item, or None.
 
         The definition carries ``renderableHtmlWithMetadata`` (rendered HTML +
@@ -214,7 +219,5 @@ class CourseraClient:
         """Return the set of course slugs the account is enrolled in (needs CAUTH)."""
         data = self._get_json(MEMBERSHIPS)
         return {
-            c.get("slug")
-            for c in (data.get("linked") or {}).get("courses.v1", [])
-            if c.get("slug")
+            c.get("slug") for c in (data.get("linked") or {}).get("courses.v1", []) if c.get("slug")
         }

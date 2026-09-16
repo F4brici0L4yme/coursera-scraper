@@ -62,6 +62,8 @@ uv sync                                    # creates .venv + installs package
 uv sync --extra hls                        # adds yt-dlp for HLS/DASH-only courses
 uv run coursera-scraper download <slug-or-url> [--module 1] [--resolution 720p]
 uv run coursera-scraper auth               # store CAUTH locally
+uv run ruff check src/                     # lint (ruff is a dev dependency)
+uv run ruff format src/                    # format
 ```
 
 Test without installing: `PYTHONPATH=src python3 -m coursera_scraper download ...`.

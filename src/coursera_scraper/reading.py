@@ -13,19 +13,9 @@ import html
 import re
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
 _SRC_RE = re.compile(r'(?<![-\w])src\s*=\s*(["\'])(.*?)\1', re.IGNORECASE)
-
-_EXT_BY_MIME = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/gif": ".gif",
-    "image/svg+xml": ".svg",
-    "image/webp": ".webp",
-    "application/pdf": ".pdf",
-}
 
 
 def rewrite_image_sources(rendered_html: str, name_fn):
@@ -45,42 +35,55 @@ def rewrite_image_sources(rendered_html: str, name_fn):
     return _SRC_RE.sub(_repl, rendered_html), urls
 
 
-def mime_to_ext(content_type: str) -> str:
-    return _EXT_BY_MIME.get(content_type.split(";")[0].strip().lower(), ".img")
-
-
 def guess_ext_from_url(url: str) -> str:
     path = urlparse(url).path
     suffix = Path(path).suffix
     return suffix if suffix and len(suffix) <= 6 else ".img"
 
 
+_BLOCK_TAGS = frozenset(
+    {
+        "p",
+        "div",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "li",
+        "br",
+        "tr",
+        "ul",
+        "ol",
+        "table",
+        "section",
+        "article",
+        "blockquote",
+        "hr",
+    }
+)
+_SKIP_TAGS = frozenset({"script", "style", "head", "noscript"})
+
+
 class _TextExtractor(HTMLParser):
     """Convert rendered HTML into readable plain text."""
-
-    _BLOCK = {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "br", "tr", "ul", "ol", "table", "section", "article", "blockquote", "hr"}
-    _SKIP = {"script", "style", "head", "noscript"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
         self._skip_depth = 0
-        self._pre = False
 
     def handle_starttag(self, tag, attrs):
-        if tag in self._SKIP:
+        if tag in _SKIP_TAGS:
             self._skip_depth += 1
-        elif tag in ("pre", "code"):
-            self._pre = True
-        if tag in self._BLOCK and not self._skip_depth:
+        if tag in _BLOCK_TAGS and not self._skip_depth:
             self.parts.append("\n")
 
     def handle_endtag(self, tag):
-        if tag in self._SKIP:
+        if tag in _SKIP_TAGS:
             self._skip_depth = max(0, self._skip_depth - 1)
-        elif tag in ("pre", "code"):
-            self._pre = False
-        if tag in self._BLOCK and not self._skip_depth:
+        if tag in _BLOCK_TAGS and not self._skip_depth:
             self.parts.append("\n")
 
     def handle_data(self, data):

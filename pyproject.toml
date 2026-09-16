@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "coursera-scraper"
 version = "0.1.0"
-description = "Download videos, subtitles, and transcripts from Coursera courses you are enrolled in"
+description = "Download videos, transcripts, readings, and slides from Coursera courses you are enrolled in"
 requires-python = ">=3.10"
 dependencies = [
     "requests>=2.28",
@@ -19,3 +19,15 @@ coursera-scraper = "coursera_scraper.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "RUF"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.7",
+]

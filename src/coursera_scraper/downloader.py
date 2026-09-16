@@ -17,7 +17,6 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Optional
 
 import requests
 
@@ -33,10 +32,10 @@ def sanitize(name: str) -> str:
     return _SAFE_RE.sub("-", name).strip("-")
 
 
-def pick_video_url(sources: dict, resolution: str) -> tuple[Optional[str], Optional[str]]:
+def pick_video_url(sources: dict, resolution: str) -> tuple[str | None, str | None]:
     """Return (chosen_resolution, mp4/webm url) for the requested resolution."""
     by_res = sources.get("byResolution") or {}
-    candidates = RESOLUTION_ORDER if resolution == "best" else [resolution] + RESOLUTION_ORDER
+    candidates = RESOLUTION_ORDER if resolution == "best" else [resolution, *RESOLUTION_ORDER]
     for res in candidates:
         entry = by_res.get(res)
         if not entry:
@@ -51,14 +50,13 @@ def _abs_url(url: str) -> str:
     return url if url.startswith("http") else BASE + url
 
 
-def _pick_localized(tracks: dict, lang: str) -> tuple[Optional[str], Optional[str]]:
-    """Return (actual_lang, url) preferring the requested language."""
+def _pick_localized(tracks: dict, lang: str) -> str | None:
+    """Return the URL for the requested language, falling back to any track."""
     if lang in tracks:
-        return lang, tracks[lang]
+        return tracks[lang]
     if tracks:
-        first = next(iter(tracks.items()))
-        return first[0], first[1]
-    return None, None
+        return next(iter(tracks.values()))
+    return None
 
 
 def _write_text(dest: Path, content: str) -> str:
@@ -98,7 +96,7 @@ def _download_with_ytdlp(url: str, dest: Path) -> None:
     tmp_dir.rmdir()
 
 
-def _download_file(kind: str, url: str, dest: Path, cauth: Optional[str], retries: int = 3) -> str:
+def _download_file(kind: str, url: str, dest: Path, cauth: str | None, retries: int = 3) -> str:
     """Download a single file; return 'ok' or 'skip'. Raises on final failure."""
     if dest.exists() and dest.stat().st_size > 0:
         return "skip"
@@ -109,7 +107,7 @@ def _download_file(kind: str, url: str, dest: Path, cauth: Optional[str], retrie
 
     cookies = {"CAUTH": cauth} if cauth else None
     tmp = dest.with_name(dest.name + ".part")
-    last_err: Optional[Exception] = None
+    last_err: Exception | None = None
     for attempt in range(retries):
         try:
             with requests.get(url, stream=True, timeout=60, cookies=cookies) as resp:
@@ -119,10 +117,10 @@ def _download_file(kind: str, url: str, dest: Path, cauth: Optional[str], retrie
                         f.write(chunk)
             tmp.replace(dest)
             return "ok"
-        except Exception as exc:  # noqa: BLE001 - retried with backoff
+        except Exception as exc:
             last_err = exc
             tmp.unlink(missing_ok=True)
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
     raise CourseraError(f"Download failed after {retries} attempts: {last_err}") from last_err
 
 
@@ -141,6 +139,7 @@ def _resolve_reading(client, course, item, base, stem, opts) -> tuple[list, dict
     images: list[tuple[str, str]] = []
 
     if opts["include_images"]:
+
         def name_fn(url, index):
             ext = reading.guess_ext_from_url(url)
             local = f"{stem}-img-{index}{ext}"
@@ -155,11 +154,15 @@ def _resolve_reading(client, course, item, base, stem, opts) -> tuple[list, dict
         tasks.append(("text", url, base / "assets" / local))
 
     counts["reading_html"] = _write_text(base / f"{stem}-reading.html", new_html)
-    counts["reading_txt"] = _write_text(base / f"{stem}-reading.txt", reading.html_to_text(rendered))
+    counts["reading_txt"] = _write_text(
+        base / f"{stem}-reading.txt", reading.html_to_text(rendered)
+    )
     return tasks, counts
 
 
-def _resolve_lesson_tasks(client, course, module, lesson, opts) -> tuple[list, dict[str, int], int, dict[str, int]]:
+def _resolve_lesson_tasks(
+    client, course, module, lesson, opts
+) -> tuple[list, dict[str, int], int, dict[str, int]]:
     """Build download tasks for every item in a lesson (unified item numbering)."""
     lang = opts["lang"]
     resolution = opts["resolution"]
@@ -196,10 +199,16 @@ def _resolve_lesson_tasks(client, course, module, lesson, opts) -> tuple[list, d
                 if url:
                     tasks.append(("video", url, base / f"{stem}-video.mp4"))
                 elif playlists:
-                    tasks.append(("hls", playlists.get("mpeg-dash") or playlists.get("hls"), base / f"{stem}-video.mp4"))
+                    tasks.append(
+                        (
+                            "hls",
+                            playlists.get("mpeg-dash") or playlists.get("hls"),
+                            base / f"{stem}-video.mp4",
+                        )
+                    )
 
             if opts["include_transcript"]:
-                _, url = _pick_localized(vinfo.get("subtitlesTxt") or {}, lang)
+                url = _pick_localized(vinfo.get("subtitlesTxt") or {}, lang)
                 if url:
                     tasks.append(("text", _abs_url(url), base / f"{stem}-transcript.txt"))
 
@@ -224,7 +233,9 @@ def _resolve_lesson_tasks(client, course, module, lesson, opts) -> tuple[list, d
                 skipped_types["supplement"] = skipped_types.get("supplement", 0) + 1
 
         else:
-            skipped_types[item.type_name or "unknown"] = skipped_types.get(item.type_name or "unknown", 0) + 1
+            skipped_types[item.type_name or "unknown"] = (
+                skipped_types.get(item.type_name or "unknown", 0) + 1
+            )
 
     return tasks, skipped_types, locked, inline_counts
 
@@ -259,7 +270,9 @@ def download_course(client: CourseraClient, slug: str, **opts) -> dict:
             opt = dict(opts)
             opt["module_idx"] = mi
             opt["lesson_idx"] = li
-            tasks, skipped, lk, inline_counts = _resolve_lesson_tasks(client, course, module, lesson, opt)
+            tasks, skipped, lk, inline_counts = _resolve_lesson_tasks(
+                client, course, module, lesson, opt
+            )
             all_tasks.extend(tasks)
             locked += lk
             inline += sum(inline_counts.values())
@@ -282,14 +295,14 @@ def download_course(client: CourseraClient, slug: str, **opts) -> dict:
     concurrency = opts.get("concurrency", 3)
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = {
-            pool.submit(_download_file, kind, url, dest, cauth): (kind, dest)
+            pool.submit(_download_file, kind, url, dest, cauth): dest
             for kind, url, dest in all_tasks
         }
         for fut in as_completed(futures):
-            kind, dest = futures[fut]
+            dest = futures[fut]
             try:
                 status = fut.result()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 status = "failed"
                 print(f"  FAILED {dest.name}: {exc}")
             results[status] = results.get(status, 0) + 1
