@@ -8,6 +8,7 @@ output surface differs (live progress vs printed lines).
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +41,8 @@ from .cli import AUTH_FILE, extract_slug, load_cauth
 from .downloader import RESOLUTION_ORDER, download_course
 
 RESOLUTIONS = ["best", *RESOLUTION_ORDER]
+
+_SLUG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
 CSS = """
 Screen {
@@ -210,13 +213,18 @@ class CourseScreen(Screen):
         text = event.value.strip()
         if not text:
             return
-        try:
-            slug = extract_slug(text)
-        except CourseraError as exc:
-            self.query_one("#status", Static).update(f"[red]{exc}[/]")
-            return
-        self.app.state.slug = slug
-        self.app.push_screen(ModulesScreen())
+        # Only treat the input as a direct slug/URL if it looks like one;
+        # otherwise it's a fuzzy query, so hand focus to the results list.
+        if text.startswith("http") or _SLUG_RE.fullmatch(text):
+            try:
+                slug = extract_slug(text)
+            except CourseraError as exc:
+                self.query_one("#status", Static).update(f"[red]{exc}[/]")
+                return
+            self.app.state.slug = slug
+            self.app.push_screen(ModulesScreen())
+        else:
+            self.query_one("#courses", OptionList).focus()
 
     def _refresh(self, query: str) -> None:
         courses = getattr(self, "_courses", [])

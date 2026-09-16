@@ -101,13 +101,19 @@ class CourseraClient:
             self.session.cookies.set("CAUTH", cauth, domain=".coursera.org")
 
     def _get_json(self, url: str) -> dict:
-        resp = self.session.get(url, timeout=30)
+        try:
+            resp = self.session.get(url, timeout=30)
+        except requests.RequestException as exc:
+            raise CourseraError(f"Network error: {exc}") from exc
         if resp.status_code in (401, 403):
             raise AuthError(
                 f"Request rejected ({resp.status_code}). "
                 "Your CAUTH cookie may be missing or expired."
             )
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as exc:
+            raise CourseraError(f"API error {resp.status_code}: {url}") from exc
         return resp.json()
 
     def get_course(self, slug: str) -> Course:
