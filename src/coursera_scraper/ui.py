@@ -95,6 +95,12 @@ Screen {
     width: 1fr;
 }
 
+.actions {
+    height: auto;
+    align-horizontal: center;
+    padding: 1;
+}
+
 ProgressBar {
     width: 100%;
 }
@@ -276,7 +282,7 @@ class ModulesScreen(Screen):
     BINDINGS = (
         Binding("escape", "back", "Back"),
         Binding("a", "all", "All/None"),
-        Binding("enter", "continue", "Continue"),
+        Binding("enter", "continue", "Continue", priority=True),
     )
 
     def __init__(self):
@@ -288,6 +294,8 @@ class ModulesScreen(Screen):
         yield Static("Cargando módulos…", id="status")
         yield LoadingIndicator(id="loading")
         yield SelectionList[str](id="modules")
+        with Horizontal(classes="actions"):
+            yield Button("Continuar", variant="primary", id="continue")
         yield Static("", id="hint", classes="hint")
         yield Footer()
 
@@ -331,9 +339,15 @@ class ModulesScreen(Screen):
         else:
             sel.select_all()
 
+    @on(Button.Pressed, "#continue")
+    def on_continue_pressed(self) -> None:
+        self.action_continue()
+
     def action_continue(self) -> None:
+        if not self._loaded:
+            return
         sel = self.query_one("#modules", SelectionList)
-        self.app.state.selected_modules = [s.value for s in sel.selected]
+        self.app.state.selected_modules = list(sel.selected)
         self.app.push_screen(OptionsScreen())
 
     def action_back(self) -> None:
@@ -343,7 +357,7 @@ class ModulesScreen(Screen):
 class OptionsScreen(Screen):
     BINDINGS = (
         Binding("escape", "back", "Back"),
-        Binding("enter", "start", "Start"),
+        Binding("enter", "start", "Start", priority=True),
     )
 
     def compose(self) -> ComposeResult:
@@ -371,8 +385,14 @@ class OptionsScreen(Screen):
             with Horizontal(classes="toggle-row"):
                 yield Label("Slides / PDFs")
                 yield Switch(value=True, id="slides")
+            with Horizontal(classes="actions"):
+                yield Button("Descargar", variant="primary", id="start")
             yield Static("[dim]enter[/] para iniciar · [bold]esc[/] para volver", classes="hint")
         yield Footer()
+
+    @on(Button.Pressed, "#start")
+    def on_start_pressed(self) -> None:
+        self.action_start()
 
     def action_start(self) -> None:
         s = self.app.state
