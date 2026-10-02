@@ -52,14 +52,15 @@ The cookie expires — re-run `auth` when downloads start returning 401/403.
 # download a whole course
 uv run coursera-scraper download https://www.coursera.org/learn/some-course-slug
 
-# just one module (1-based index or slug)
+# just one module (1-based index or slug), or several comma-separated
 uv run coursera-scraper download some-course-slug --module 1
+uv run coursera-scraper download some-course-slug --module 1,3
 
 # lower resolution to save space
 uv run coursera-scraper download some-course-slug --resolution 720p
 ```
 
-Options: `--module`, `--resolution best|1080p|720p|540p|360p|240p`, `--lang en`,
+Options: `--module` (index, slug, or comma-separated list), `--resolution best|1080p|720p|540p|360p|240p`, `--lang en`,
 `--out downloads`, `--concurrency 3`, `--no-video`, `--no-transcript`,
 `--no-readings`, `--no-images`, `--no-slides`.
 

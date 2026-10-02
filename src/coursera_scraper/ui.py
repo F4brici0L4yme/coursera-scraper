@@ -556,11 +556,7 @@ class HelpScreen(Screen):
 
 
 def _module_filter(s: State):
-    if not s.selected_modules:
-        return None
-    if len(s.selected_modules) == 1:
-        return s.selected_modules[0]
-    return s.selected_modules
+    return list(s.selected_modules) or None
 
 
 def _fmt_duration(seconds: float) -> str:

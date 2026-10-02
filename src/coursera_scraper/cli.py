@@ -18,6 +18,17 @@ AUTH_FILE = Path.home() / ".coursera-scraper" / "auth.json"
 _LEARN_RE = re.compile(r"/learn/([^/?#]+)")
 
 
+def _parse_modules(raw: str | None):
+    """Parse --module: single index/slug or comma-separated list of them."""
+    if raw is None:
+        return None
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if not parts:
+        return None
+    vals = [int(p) if p.isdigit() else p for p in parts]
+    return vals[0] if len(vals) == 1 else vals
+
+
 def extract_slug(arg: str) -> str:
     if arg.startswith("http"):
         m = _LEARN_RE.search(arg)
@@ -78,9 +89,7 @@ def cmd_download(args: argparse.Namespace) -> int:
         except CourseraError as exc:
             print(f"warning: could not verify enrollment ({exc})", file=sys.stderr)
 
-    module_filter = args.module
-    if args.module is not None and args.module.isdigit():
-        module_filter = int(args.module)
+    module_filter = _parse_modules(args.module)
 
     results = download_course(
         client,
@@ -123,7 +132,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_dl = sub.add_parser("download", help="download a course (or one module)")
     p_dl.add_argument("course", help="course URL or slug")
-    p_dl.add_argument("--module", help="limit to one module: 1-based index or slug")
+    p_dl.add_argument(
+        "--module",
+        help="limit to modules: 1-based index, slug, or comma-separated list (e.g. 1,3)",
+    )
     p_dl.add_argument(
         "--resolution", default="best", help="best|1080p|720p|540p|360p|240p (default: best)"
     )

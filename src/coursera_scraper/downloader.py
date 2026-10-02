@@ -27,6 +27,61 @@ RESOLUTION_ORDER = ["1080p", "720p", "540p", "360p", "240p"]
 
 _SAFE_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
+_MIME_EXT = {
+    "application/pdf": ".pdf",
+    "application/json": ".json",
+    "application/x-ipynb+json": ".ipynb",
+    "application/zip": ".zip",
+    "application/x-zip-compressed": ".zip",
+    "text/csv": ".csv",
+    "text/plain": ".txt",
+    "text/html": ".html",
+    "application/msword": ".doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.ms-powerpoint": ".ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+}
+
+_NON_EXT_TYPES = {"generic", "unknown", "asset", "binary", "file"}
+
+
+def _sniff_asset_ext(url: str) -> str | None:
+    """HEAD the signed URL and map Content-Type to an extension (or None).
+
+    Jupyter notebooks are sometimes served as plain ``application/json``;
+    peek at the first bytes in that case to tell them apart (``"nbformat"``).
+    """
+    try:
+        resp = requests.head(url, timeout=30, allow_redirects=True)
+        if resp.status_code >= 400:
+            return None
+        ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype == "application/json":
+            try:
+                peek = requests.get(url, headers={"Range": "bytes=0-255"}, timeout=30)
+                if peek.status_code in (200, 206) and b'"nbformat"' in peek.content[:512]:
+                    return ".ipynb"
+            except Exception:
+                pass
+        return _MIME_EXT.get(ctype)
+    except Exception:
+        return None
+
+
+def _asset_ext(name: str, type_name: str | None, url: str) -> str:
+    """Best-effort extension: filename suffix, asset type, then Content-Type."""
+    ext = Path(name).suffix.lstrip(".").lower()
+    if ext and len(ext) <= 10:
+        return ext
+    tn = (type_name or "").lower()
+    if tn and tn not in _NON_EXT_TYPES and len(tn) <= 5 and tn.isalnum():
+        return tn
+    return (_sniff_asset_ext(url) or ".bin").lstrip(".")
+
 
 def sanitize(name: str) -> str:
     return _SAFE_RE.sub("-", name).strip("-")
@@ -117,7 +172,7 @@ def _download_file(
     last_err: Exception | None = None
     for attempt in range(retries):
         try:
-            with requests.get(url, stream=True, timeout=60, cookies=cookies) as resp:
+            with requests.get(url, stream=True, timeout=(10, 300), cookies=cookies) as resp:
                 resp.raise_for_status()
                 buf = 0
                 last_emit = time.monotonic()
@@ -233,9 +288,7 @@ def _resolve_lesson_tasks(
             if opts["include_slides"]:
                 asset_ids = client.get_lecture_assets(course.id, item.id)
                 for si, f in enumerate(client.get_asset_files(asset_ids), start=1):
-                    ext = Path(f["name"]).suffix.lstrip(".").lower()
-                    if not ext or len(ext) > 10:
-                        ext = (f.get("type_name") or "bin").lower()
+                    ext = _asset_ext(f["name"], f.get("type_name"), f["url"])
                     tasks.append(("text", f["url"], base / f"{stem}-slides-{si}.{ext}"))
 
         elif item.type_name == "supplement":
@@ -259,7 +312,10 @@ def _resolve_lesson_tasks(
 
 
 def download_course(client: CourseraClient, slug: str, progress=None, **opts) -> dict:
-    """Download a whole course (or a single module via opts['module_filter']).
+    """Download a whole course (or a subset via opts['module_filter']).
+
+    ``module_filter`` may be None (all modules), an int index, a module
+    slug/name, or a list mixing them.
 
     ``progress`` is an optional callable receiving event dicts:
         {"type": "start", "total": int}
@@ -269,20 +325,28 @@ def download_course(client: CourseraClient, slug: str, progress=None, **opts) ->
     course = client.get_course(slug)
 
     module_filter = opts.get("module_filter")
-    selected = []
-    for mi, module in enumerate(course.modules, start=1):
-        if module_filter is None:
-            selected.append((mi, module))
-        elif isinstance(module_filter, int):
-            if module_filter == mi:
-                selected.append((mi, module))
-        elif module.slug == module_filter or module.name == module_filter:
-            selected.append((mi, module))
+    if isinstance(module_filter, (int, str)) or module_filter is None:
+        filters = [module_filter]
+    else:
+        filters = list(module_filter)
+
+    def _matches(mi: int, module) -> bool:
+        for f in filters:
+            if f is None:
+                return True
+            if isinstance(f, int) and f == mi:
+                return True
+            if isinstance(f, str) and (f == module.slug or f == module.name):
+                return True
+        return False
+
+    selected = [
+        (mi, module) for mi, module in enumerate(course.modules, start=1) if _matches(mi, module)
+    ]
 
     if not selected:
-        if isinstance(module_filter, int):
-            raise CourseraError(f"Module index out of range (1..{len(course.modules)}).")
-        raise CourseraError(f"Module '{module_filter}' not found.")
+        available = ", ".join(f"{i}:{m.slug}" for i, m in enumerate(course.modules, start=1))
+        raise CourseraError(f"Module {module_filter!r} not found. Available modules: {available}.")
 
     all_tasks: list[tuple[str, str, Path]] = []
     skipped_types: dict[str, int] = {}
