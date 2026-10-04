@@ -84,7 +84,13 @@ uv run coursera-scraper notebook some-course-slug --module 1 --force
 uv run coursera-scraper notebook some-course-slug --module 1 --notebook "Mi Notebook"
 ```
 
-Re-runs skip sources whose titles already exist in the notebook.
+Re-runs skip sources whose titles already exist in the notebook. Videos (`.mp4`),
+reading images, and `.html` twins are not uploaded — transcripts carry the spoken
+content and `.txt` readings carry the text.
+
+If uploads start failing with auth errors, re-login (`nlm login`) or refresh
+headlessly (`nlm auth refresh`); check status with `nlm login --check`. For a
+second Google account, pass `--nlm-profile <name>` (after `nlm login --profile`).
 
 ## Output layout
 
@@ -105,9 +111,11 @@ downloads/<course-slug>/<MM>-<module-slug>/<LL>-<lesson-slug>/
 - **Phase 1 (implemented):** lecture videos + transcripts.
 - **Phase 2 (implemented):** readings (as HTML + plain text, with embedded images
   downloaded). Code blocks are preserved in the HTML.
-- **Phase 3 (implemented):** slides/PDFs attached to videos.
-- Quizzes (`staffGraded`/`ungradedAssignment`), notebooks, and other attachments are
-  detected but skipped — see [docs/adr/0002-quiz-limitations.md](docs/adr/0002-quiz-limitations.md).
+- **Phase 3 (implemented):** slides/PDFs (and attached notebooks) from videos.
+- **Notebook upload (implemented):** send transcripts, readings, and slides to
+  Gemini Notebook, one notebook per module — see above.
+- Quizzes (`staffGraded`/`ungradedAssignment`) and lab workspaces (`ungradedLab`)
+  are detected but skipped — see [docs/adr/0002-quiz-limitations.md](docs/adr/0002-quiz-limitations.md).
 - Full-specialization support is intentionally not built yet.
 
 ## Approach
