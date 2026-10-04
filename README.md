@@ -64,6 +64,34 @@ Options: `--module` (index, slug, or comma-separated list), `--resolution best|1
 `--out downloads`, `--concurrency 3`, `--no-video`, `--no-transcript`,
 `--no-readings`, `--no-images`, `--no-slides`.
 
+## Gemini Notebook upload
+
+Send transcripts, readings, slides, and notebooks to Gemini Notebook (formerly
+NotebookLM) via the external [`nlm` CLI](https://github.com/jacob-bd/gemini-notebook-mcp-cli).
+One notebook is created per module (NotebookLM caps sources per notebook).
+
+```bash
+uv tool install notebooklm-mcp-cli   # one-time: provides `nlm`
+nlm login                            # one-time: Google login in your browser
+nlm login --check                    # verify auth still works
+
+# upload one module (transcripts + readings + slides, videos excluded)
+uv run coursera-scraper notebook some-course-slug --module 1
+
+# preview without uploading, or force re-upload / single notebook / other profile
+uv run coursera-scraper notebook some-course-slug --module 1 --dry-run
+uv run coursera-scraper notebook some-course-slug --module 1 --force
+uv run coursera-scraper notebook some-course-slug --module 1 --notebook "Mi Notebook"
+```
+
+Re-runs skip sources whose titles already exist in the notebook. Videos (`.mp4`),
+reading images, and `.html` twins are not uploaded — transcripts carry the spoken
+content and `.txt` readings carry the text.
+
+If uploads start failing with auth errors, re-login (`nlm login`) or refresh
+headlessly (`nlm auth refresh`); check status with `nlm login --check`. For a
+second Google account, pass `--nlm-profile <name>` (after `nlm login --profile`).
+
 ## Output layout
 
 Items are numbered by their position within the lesson (matching the Coursera UI):
@@ -83,9 +111,11 @@ downloads/<course-slug>/<MM>-<module-slug>/<LL>-<lesson-slug>/
 - **Phase 1 (implemented):** lecture videos + transcripts.
 - **Phase 2 (implemented):** readings (as HTML + plain text, with embedded images
   downloaded). Code blocks are preserved in the HTML.
-- **Phase 3 (implemented):** slides/PDFs attached to videos.
-- Quizzes (`staffGraded`/`ungradedAssignment`), notebooks, and other attachments are
-  detected but skipped — see [docs/adr/0002-quiz-limitations.md](docs/adr/0002-quiz-limitations.md).
+- **Phase 3 (implemented):** slides/PDFs (and attached notebooks) from videos.
+- **Notebook upload (implemented):** send transcripts, readings, and slides to
+  Gemini Notebook, one notebook per module — see above.
+- Quizzes (`staffGraded`/`ungradedAssignment`) and lab workspaces (`ungradedLab`)
+  are detected but skipped — see [docs/adr/0002-quiz-limitations.md](docs/adr/0002-quiz-limitations.md).
 - Full-specialization support is intentionally not built yet.
 
 ## Approach
