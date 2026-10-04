@@ -64,6 +64,28 @@ Options: `--module` (index, slug, or comma-separated list), `--resolution best|1
 `--out downloads`, `--concurrency 3`, `--no-video`, `--no-transcript`,
 `--no-readings`, `--no-images`, `--no-slides`.
 
+## Gemini Notebook upload
+
+Send transcripts, readings, slides, and notebooks to Gemini Notebook (formerly
+NotebookLM) via the external [`nlm` CLI](https://github.com/jacob-bd/gemini-notebook-mcp-cli).
+One notebook is created per module (NotebookLM caps sources per notebook).
+
+```bash
+uv tool install notebooklm-mcp-cli   # one-time: provides `nlm`
+nlm login                            # one-time: Google login in your browser
+nlm login --check                    # verify auth still works
+
+# upload one module (transcripts + readings + slides, videos excluded)
+uv run coursera-scraper notebook some-course-slug --module 1
+
+# preview without uploading, or force re-upload / single notebook / other profile
+uv run coursera-scraper notebook some-course-slug --module 1 --dry-run
+uv run coursera-scraper notebook some-course-slug --module 1 --force
+uv run coursera-scraper notebook some-course-slug --module 1 --notebook "Mi Notebook"
+```
+
+Re-runs skip sources whose titles already exist in the notebook.
+
 ## Output layout
 
 Items are numbered by their position within the lesson (matching the Coursera UI):

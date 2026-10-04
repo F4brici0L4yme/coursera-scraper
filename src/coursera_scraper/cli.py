@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .api import CourseraClient, CourseraError
 from .downloader import download_course
+from .notebook import NotebookError, upload_course
 
 AUTH_FILE = Path.home() / ".coursera-scraper" / "auth.json"
 
@@ -152,7 +153,54 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument("--concurrency", type=int, default=3, help="parallel downloads (default: 3)")
     p_dl.set_defaults(func=cmd_download)
 
+    p_nb = sub.add_parser(
+        "notebook", help="upload downloaded material to Gemini Notebook (via nlm)"
+    )
+    p_nb.add_argument("course", help="course URL or slug (must already be downloaded)")
+    p_nb.add_argument(
+        "--module",
+        help="limit to modules: 1-based index, slug, or comma-separated list (e.g. 1,3)",
+    )
+    p_nb.add_argument("--out", default="downloads", help="download root to read from")
+    p_nb.add_argument(
+        "--notebook",
+        default=None,
+        help="single notebook name override (default: one notebook per module)",
+    )
+    p_nb.add_argument(
+        "--dry-run", action="store_true", help="list what would be uploaded without calling nlm"
+    )
+    p_nb.add_argument(
+        "--force",
+        action="store_true",
+        help="re-upload even if a source with the same title exists",
+    )
+    p_nb.add_argument(
+        "--no-wait", action="store_true", help="don't wait for NotebookLM source processing"
+    )
+    p_nb.add_argument("--nlm-profile", default=None, help="nlm profile to use")
+    p_nb.set_defaults(func=cmd_notebook)
+
     return parser
+
+
+def cmd_notebook(args: argparse.Namespace) -> int:
+    slug = extract_slug(args.course)
+    results = upload_course(
+        args.out,
+        slug,
+        progress=_print_progress,
+        module_filter=_parse_modules(args.module),
+        notebook=args.notebook,
+        dry_run=args.dry_run,
+        force=args.force,
+        wait=not args.no_wait,
+        profile=args.nlm_profile,
+    )
+    for nb in results["notebooks"]:
+        print(f"{'created' if nb['created'] else 'reused'} notebook: {nb['name']}")
+    print(f"\nDone. ok={results['ok']} skipped={results['skip']} failed={results['failed']}")
+    return 1 if results["failed"] else 0
 
 
 def launch_tui() -> int:
@@ -175,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
         return launch_tui()
     try:
         return args.func(args)
-    except CourseraError as exc:
+    except (CourseraError, NotebookError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
