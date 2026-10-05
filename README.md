@@ -88,6 +88,15 @@ Re-runs skip sources whose titles already exist in the notebook. Videos (`.mp4`)
 reading images, and `.html` twins are not uploaded — transcripts carry the spoken
 content and `.txt` readings carry the text.
 
+To see what is downloaded and upload everything at once:
+
+```bash
+uv run coursera-scraper downloaded              # table: courses, modules, file counts, size
+uv run coursera-scraper downloaded --json       # same, as JSON (for scripting)
+uv run coursera-scraper notebook --all           # upload every downloaded course
+uv run coursera-scraper notebook --all --dry-run # preview the bulk upload
+```
+
 If uploads start failing with auth errors, re-login (`nlm login`) or refresh
 headlessly (`nlm auth refresh`); check status with `nlm login --check`. For a
 second Google account, pass `--nlm-profile <name>` (after `nlm login --profile`).
