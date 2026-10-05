@@ -172,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_nb.add_argument(
         "--notebook",
         default=None,
-        help="single notebook name override (default: one notebook per module)",
+        help="notebook name (default: the course slug)",
     )
     p_nb.add_argument(
         "--dry-run", action="store_true", help="list what would be uploaded without calling nlm"

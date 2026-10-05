@@ -12,11 +12,15 @@ code, or shell out to the existing `nlm` CLI (`notebooklm-mcp-cli`).
 ## Decision
 
 Shell out to `nlm` (`nlm notebook list/create`, `nlm source add/list --json`)
-via `subprocess`, with no new Python dependencies. One notebook per module
-(`"<slug> — M<MM> <module>"`), since NotebookLM caps sources per notebook.
-Upload `*-transcript.txt`, `*-reading.txt`, `*-slides-*.pdf`, and attached
-`.ipynb`; skip `.mp4` (transcripts carry the spoken content), `.html` twins,
-reading images, and `.generic` leftovers. Re-runs skip titles already present.
+via `subprocess`, with no new Python dependencies. One notebook per course
+(named after the course slug; source titles carry the `MM module / NN item`
+prefix so the module stays identifiable). Upload `*-transcript.txt`,
+`*-reading.txt`, `*-slides-*.pdf`, and attached `.ipynb`; skip `.mp4`
+(transcripts carry the spoken content), `.html` twins, reading images, and
+`.generic` leftovers. Re-runs skip titles already present.
+
+*Update 2026-10-05: originally one notebook per module; changed to one per
+course because many per-module notebooks get unwieldy.*
 
 ## Consequences
 

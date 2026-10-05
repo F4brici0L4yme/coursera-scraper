@@ -70,7 +70,8 @@ Options: `--module` (index, slug, or comma-separated list), `--resolution best|1
 
 Send transcripts, readings, slides, and notebooks to Gemini Notebook (formerly
 NotebookLM) via the external [`nlm` CLI](https://github.com/jacob-bd/gemini-notebook-mcp-cli).
-One notebook is created per module (NotebookLM caps sources per notebook).
+One notebook is created per course (source titles carry the `MM module / NN item`
+prefix, so the module stays identifiable).
 
 ```bash
 uv tool install notebooklm-mcp-cli   # one-time: provides `nlm`
@@ -124,7 +125,7 @@ downloads/<course-slug>/<MM>-<module-slug>/<LL>-<lesson-slug>/
   downloaded). Code blocks are preserved in the HTML.
 - **Phase 3 (implemented):** slides/PDFs (and attached notebooks) from videos.
 - **Notebook upload (implemented):** send transcripts, readings, and slides to
-  Gemini Notebook, one notebook per module — see above.
+  Gemini Notebook, one notebook per course — see above.
 - Quizzes (`staffGraded`/`ungradedAssignment`) and lab workspaces (`ungradedLab`)
   are detected but skipped — see [docs/adr/0002-quiz-limitations.md](docs/adr/0002-quiz-limitations.md).
 - Full-specialization support is intentionally not built yet.

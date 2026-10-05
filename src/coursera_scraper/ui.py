@@ -181,6 +181,7 @@ class CourseScreen(Screen):
         Binding("a", "auth", "Set CAUTH"),
         Binding("d", "library", "Mis descargas"),
         Binding("q", "quit", "Quit"),
+        Binding("escape", "unfocus", "Unfocus"),
         Binding("question_mark", "help", "Help"),
     )
 
@@ -267,6 +268,9 @@ class CourseScreen(Screen):
     def action_library(self) -> None:
         self.app.push_screen(LibraryScreen())
 
+    def action_unfocus(self) -> None:
+        self.query_one("#courses", OptionList).focus()
+
     def action_quit(self) -> None:
         self.app.exit()
 
@@ -275,6 +279,8 @@ class CourseScreen(Screen):
 
 
 class AuthModal(ModalScreen):
+    BINDINGS = (Binding("escape", "cancel", "Cancel"),)
+
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
             yield Label("Pega tu cookie CAUTH (del navegador, cookie CAUTH de coursera.org):")
@@ -294,6 +300,9 @@ class AuthModal(ModalScreen):
 
     @on(Button.Pressed, "#cancel")
     def on_cancel(self) -> None:
+        self.dismiss()
+
+    def action_cancel(self) -> None:
         self.dismiss()
 
 
@@ -426,7 +435,10 @@ class OptionsScreen(Screen):
         self.app.push_screen(DownloadScreen())
 
     def action_back(self) -> None:
-        self.app.pop_screen()
+        if isinstance(self.focused, Input):
+            self.set_focus(None)
+        else:
+            self.app.pop_screen()
 
 
 class DownloadScreen(Screen):
@@ -798,7 +810,7 @@ class HelpScreen(Screen):
             "  a               todos/none (módulos) · configurar CAUTH (cursos)\n"
             "  d               mis descargas (cursos)\n"
             "  r               refrescar (mis descargas)\n"
-            "  esc             volver\n"
+            "  esc             salir del campo de texto / volver\n"
             "  q               salir\n"
             "  ctrl+p          paleta de comandos\n",
             id="summary",
