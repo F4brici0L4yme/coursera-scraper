@@ -22,7 +22,9 @@ uv run coursera-scraper
 
 It walks you through: pick a course (search, or paste a slug/URL) → select modules →
 choose options (resolution, language, content types) → watch progress with live
-throughput and ETA. Requires `uv sync --extra ui`.
+throughput and ETA. Press `d` on the course list to open **Mis descargas**: your
+locally downloaded courses, with per-module upload to Gemini Notebook
+(requires `nlm login`, same as the `notebook` command). Requires `uv sync --extra ui`.
 
 The CLI subcommands (`download`, `auth`) remain available for scripting/automation.
 

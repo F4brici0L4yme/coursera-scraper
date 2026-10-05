@@ -20,6 +20,8 @@ same ones the SPA calls. Media URLs are pre-signed, so downloads work without lo
 - `src/coursera_scraper/inventory.py` — pure disk scan of `downloads/` (no network);
   per-course/module file counts by kind + sizes. Used by `downloaded` and `notebook --all`.
 - `src/coursera_scraper/ui.py` — interactive TUI (Textual; optional `ui` extra).
+  Course picker → module select → options → download progress, plus a "Mis descargas"
+  library (local inventory + per-module NotebookLM upload via `notebook.upload_course`).
 - `src/coursera_scraper/cli.py` — `coursera-scraper {auth,download,notebook,downloaded}` + TUI launcher.
 
 Key facts an agent would otherwise miss:
