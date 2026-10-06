@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .api import CourseraClient, CourseraError
 from .config import CONFIG_FILE, DEFAULTS, load_config, resolve, save_config
-from .downloader import download_course
+from .downloader import RESOLUTION_ORDER, download_course
 from .inventory import format_size, scan_downloads
 from .notebook import NotebookError, upload_course
 
@@ -149,6 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument(
         "--resolution",
         default=None,
+        choices=["best", *RESOLUTION_ORDER],
         help="best|1080p|720p|540p|360p|240p (default: config or best)",
     )
     p_dl.add_argument("--lang", default=None, help="subtitle language code (default: config or en)")
@@ -206,7 +207,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_ls.set_defaults(func=cmd_downloaded)
 
     p_cfg = sub.add_parser("config", help="set default options (stored in config.json)")
-    p_cfg.add_argument("--resolution", default=None, help="default resolution")
+    p_cfg.add_argument(
+        "--resolution", default=None, choices=["best", *RESOLUTION_ORDER], help="default resolution"
+    )
     p_cfg.add_argument("--lang", default=None, help="default subtitle language")
     p_cfg.add_argument("--out", default=None, help="default output root")
     p_cfg.add_argument("--concurrency", type=int, default=None, help="default concurrency")
@@ -365,6 +368,12 @@ def launch_tui() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    try:
+        import argcomplete
+
+        argcomplete.autocomplete(parser)
+    except ImportError:  # pragma: no cover - optional
+        pass
     args = parser.parse_args(argv)
     if args.command is None:
         return launch_tui()

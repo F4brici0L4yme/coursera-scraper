@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Download videos, transcripts, readings, and slides from Coursera courses you are enrolled in"
 requires-python = ">=3.10"
 dependencies = [
+    "argcomplete>=3.7.2",
     "requests>=2.28",
 ]
 

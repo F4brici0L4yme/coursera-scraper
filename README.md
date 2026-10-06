@@ -12,6 +12,28 @@ uv sync --extra ui          # add Textual for the interactive TUI
 uv sync --extra hls         # add yt-dlp for courses that only serve HLS/DASH streams
 ```
 
+## Shell completions
+
+Tab-completion is available via `argcomplete` (bundled). Register once in your shell:
+
+```bash
+# bash — add to ~/.bashrc
+eval "$(register-python-argcomplete coursera-scraper)"
+
+# zsh — add to ~/.zshrc
+autoload -U bashcompinit && bashcompinit
+eval "$(register-python-argcomplete coursera-scraper)"
+```
+
+## Configuration
+
+Defaults can be stored in `~/.coursera-scraper/config.json` (flags still win):
+
+```bash
+uv run coursera-scraper config --resolution 720p --lang en --out downloads --concurrency 5
+uv run coursera-scraper doctor    # diagnose config, CAUTH, nlm and disk
+```
+
 ## Interactive TUI
 
 Run the scraper with no arguments to open the interactive terminal UI:
