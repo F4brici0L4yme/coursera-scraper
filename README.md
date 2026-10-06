@@ -88,6 +88,9 @@ uv run coursera-scraper download https://www.coursera.org/specializations/ibm-ai
 uv run coursera-scraper download ibm-ai-workflow --specialization
 ```
 
+Interrupted downloads leave a `.part` file and resume automatically (HTTP
+`Range`) on the next run; already-downloaded files are skipped.
+
 Options: `--module` (index, slug, or comma-separated list), `--resolution best|1080p|720p|540p|360p|240p`, `--lang en`,
 `--out downloads`, `--concurrency 3`, `--no-video`, `--no-transcript`,
 `--no-readings`, `--no-images`, `--no-slides`.

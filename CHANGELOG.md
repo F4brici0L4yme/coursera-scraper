@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `config` command and `~/.coursera-scraper/config.json` defaults.
 - `doctor` command: validates CAUTH, `nlm` login and reports disk space.
 - Shell completions via `argcomplete`.
+- Interrupted downloads resume via HTTP `Range` on the next run.
 - pytest test suite.
 - ADRs documenting API-first design, quiz limitations and NotebookLM upload.
 
