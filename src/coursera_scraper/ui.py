@@ -40,6 +40,7 @@ from textual.widgets.selection_list import Selection
 
 from .api import CourseraClient, CourseraError
 from .cli import AUTH_FILE, extract_slug, load_cauth
+from .config import load_config
 from .downloader import RESOLUTION_ORDER, download_course
 from .inventory import format_size, scan_downloads
 from .notebook import NotebookError, upload_course
@@ -166,7 +167,12 @@ class CourseraTUI(App):
         self.theme = "nord"
         self.cauth = cauth if cauth is not None else load_cauth(None)
         self.client = CourseraClient(cauth=self.cauth)
-        self.state = State()
+        cfg = load_config()
+        self.state = State(
+            resolution=cfg.get("resolution", "best"),
+            lang=cfg.get("lang", "en"),
+            out_dir=cfg.get("out_dir", "downloads"),
+        )
 
     def on_mount(self) -> None:
         self.push_screen(CourseScreen())
@@ -392,11 +398,13 @@ class OptionsScreen(Screen):
         yield Header(show_clock=True)
         with VerticalScroll():
             yield Label("Resolución", classes="field-label")
-            yield Select([(r, r) for r in RESOLUTIONS], value="best", id="resolution")
+            yield Select(
+                [(r, r) for r in RESOLUTIONS], value=self.app.state.resolution, id="resolution"
+            )
             yield Label("Idioma", classes="field-label")
-            yield Input(value="en", id="lang")
+            yield Input(value=self.app.state.lang, id="lang")
             yield Label("Directorio de salida", classes="field-label")
-            yield Input(value="downloads", id="outdir")
+            yield Input(value=self.app.state.out_dir, id="outdir")
             yield Label("Contenido a descargar", classes="field-label")
             with Horizontal(classes="toggle-row"):
                 yield Label("Videos")

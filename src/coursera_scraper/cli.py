@@ -7,10 +7,13 @@ import getpass
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 from .api import CourseraClient, CourseraError
+from .config import CONFIG_FILE, DEFAULTS, load_config, resolve, save_config
 from .downloader import download_course
 from .inventory import format_size, scan_downloads
 from .notebook import NotebookError, upload_course
@@ -92,21 +95,26 @@ def cmd_download(args: argparse.Namespace) -> int:
             print(f"warning: could not verify enrollment ({exc})", file=sys.stderr)
 
     module_filter = _parse_modules(args.module)
+    cfg = load_config()
+    resolution = resolve(cfg, "resolution", args.resolution)
+    lang = resolve(cfg, "lang", args.lang)
+    out_dir = resolve(cfg, "out_dir", args.out)
+    concurrency = resolve(cfg, "concurrency", args.concurrency)
 
     results = download_course(
         client,
         slug,
         progress=_print_progress,
         module_filter=module_filter,
-        resolution=args.resolution,
-        lang=args.lang,
-        out_dir=Path(args.out),
+        resolution=resolution,
+        lang=lang,
+        out_dir=Path(out_dir),
         include_video=not args.no_video,
         include_transcript=not args.no_transcript,
         include_readings=not args.no_readings,
         include_images=not args.no_images,
         include_slides=not args.no_slides,
-        concurrency=args.concurrency,
+        concurrency=concurrency,
         cauth=cauth,
     )
 
@@ -139,10 +147,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="limit to modules: 1-based index, slug, or comma-separated list (e.g. 1,3)",
     )
     p_dl.add_argument(
-        "--resolution", default="best", help="best|1080p|720p|540p|360p|240p (default: best)"
+        "--resolution",
+        default=None,
+        help="best|1080p|720p|540p|360p|240p (default: config or best)",
     )
-    p_dl.add_argument("--lang", default="en", help="subtitle language code (default: en)")
-    p_dl.add_argument("--out", default="downloads", help="output root (default: downloads)")
+    p_dl.add_argument("--lang", default=None, help="subtitle language code (default: config or en)")
+    p_dl.add_argument("--out", default=None, help="output root (default: config or downloads)")
     p_dl.add_argument("--cauth", help="CAUTH cookie value (overrides env/file)")
     p_dl.add_argument("--no-video", action="store_true", help="skip video downloads")
     p_dl.add_argument("--no-transcript", action="store_true", help="skip transcripts")
@@ -151,7 +161,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_dl.add_argument(
         "--no-slides", action="store_true", help="skip slides/PDFs attached to videos"
     )
-    p_dl.add_argument("--concurrency", type=int, default=3, help="parallel downloads (default: 3)")
+    p_dl.add_argument(
+        "--concurrency", type=int, default=None, help="parallel downloads (default: config or 3)"
+    )
     p_dl.set_defaults(func=cmd_download)
 
     p_nb = sub.add_parser(
@@ -193,7 +205,74 @@ def build_parser() -> argparse.ArgumentParser:
     p_ls.add_argument("--json", action="store_true", help="output as JSON")
     p_ls.set_defaults(func=cmd_downloaded)
 
+    p_cfg = sub.add_parser("config", help="set default options (stored in config.json)")
+    p_cfg.add_argument("--resolution", default=None, help="default resolution")
+    p_cfg.add_argument("--lang", default=None, help="default subtitle language")
+    p_cfg.add_argument("--out", default=None, help="default output root")
+    p_cfg.add_argument("--concurrency", type=int, default=None, help="default concurrency")
+    p_cfg.set_defaults(func=cmd_config)
+
+    p_doc = sub.add_parser("doctor", help="diagnose auth, nlm, config, and disk")
+    p_doc.set_defaults(func=cmd_doctor)
+
     return parser
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    save_config(
+        {
+            "resolution": args.resolution,
+            "lang": args.lang,
+            "out_dir": args.out,
+            "concurrency": args.concurrency,
+        }
+    )
+    print(f"Config saved to {CONFIG_FILE}")
+    for key in sorted(DEFAULTS):
+        print(f"  {key} = {load_config().get(key, DEFAULTS[key])}")
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    print(f"Config: {CONFIG_FILE if CONFIG_FILE.exists() else '(none)'}")
+    for key in sorted(DEFAULTS):
+        print(f"  {key} = {cfg.get(key, DEFAULTS[key])}")
+
+    cauth = load_cauth(None)
+    print("CAUTH:", "present" if cauth else "missing")
+    if cauth:
+        try:
+            n = len(CourseraClient(cauth=cauth).enrolled_slugs())
+            print(f"  valid — {n} enrolled courses")
+        except CourseraError as exc:
+            print(f"  invalid/expired: {exc}")
+
+    nlm = shutil.which("nlm")
+    print("nlm:", nlm or "not found (uv tool install notebooklm-mcp-cli)")
+    if nlm:
+        try:
+            proc = subprocess.run(
+                [nlm, "login", "--check"], capture_output=True, text=True, timeout=60
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            proc = None
+        if proc is None:
+            print("  login --check: failed to run")
+        else:
+            print(f"  login --check: rc={proc.returncode}")
+            if proc.returncode != 0:
+                print("  ", (proc.stdout or proc.stderr).strip()[-200:])
+
+    out = cfg.get("out_dir", DEFAULTS["out_dir"])
+    try:
+        usage = shutil.disk_usage(out)
+        free = usage.free // (1024**3)
+        total = usage.total // (1024**3)
+        print(f"disk ({out}): {free} GiB free / {total} GiB")
+    except OSError:
+        print(f"disk ({out}): unavailable")
+    return 0
 
 
 def cmd_downloaded(args: argparse.Namespace) -> int:
