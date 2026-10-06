@@ -16,7 +16,9 @@ same ones the SPA calls. Media URLs are pre-signed, so downloads work without lo
 - `src/coursera_scraper/reading.py` — reading HTML/image/plain-text handling.
 - `src/coursera_scraper/notebook.py` — Gemini Notebook upload via the external `nlm`
   CLI (subprocess, no new deps). One notebook per course; uploads `.txt`/`.pdf`/`.ipynb`,
-  skips `.mp4`/`.html` twins/images. Re-runs skip existing titles (idempotent).
+  skips `.mp4`/`.html` twins/images. A local `.nlm-manifest.json` (in the course
+  download dir) makes re-runs skip instantly and upload only new files; `--force`
+  re-uploads, `--resync` re-checks against NotebookLM.
 - `src/coursera_scraper/inventory.py` — pure disk scan of `downloads/` (no network);
   per-course/module file counts by kind + sizes. Used by `downloaded` and `notebook --all`.
 - `src/coursera_scraper/ui.py` — interactive TUI (Textual; optional `ui` extra).

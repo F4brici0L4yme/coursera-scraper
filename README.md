@@ -113,9 +113,12 @@ uv run coursera-scraper notebook some-course-slug --module 1 --force
 uv run coursera-scraper notebook some-course-slug --module 1 --notebook "Mi Notebook"
 ```
 
-Re-runs skip sources whose titles already exist in the notebook. Videos (`.mp4`),
-reading images, and `.html` twins are not uploaded — transcripts carry the spoken
-content and `.txt` readings carry the text.
+Re-runs skip sources already uploaded, tracked in a local
+`downloads/<course>/.nlm-manifest.json` (so re-runs are instant and only new
+files are uploaded). If sources changed directly in NotebookLM, use `--resync`
+to re-check against it. Videos (`.mp4`), reading images, and `.html` twins are
+not uploaded — transcripts carry the spoken content and `.txt` readings carry
+the text.
 
 To see what is downloaded and upload everything at once:
 

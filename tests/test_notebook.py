@@ -64,6 +64,39 @@ def test_upload_course_idempotent(monkeypatch, tmp_path):
     assert r2["skip"] == 2 and r2["ok"] == 0 and r2["failed"] == 0
 
 
+def test_manifest_written_and_delta(monkeypatch, tmp_path):
+    _make_course(tmp_path)
+    state = {"notebooks": [], "sources": {}}
+    monkeypatch.setattr(notebook, "run_nlm", _fake_nlm(state))
+    upload_course(tmp_path, "demo")
+    manifest = tmp_path / "demo" / ".nlm-manifest.json"
+    assert manifest.exists()
+    # add a new file -> only it is uploaded on the next run
+    (tmp_path / "demo" / "01-mod-a" / "01-les" / "03-z-transcript.txt").write_text("new")
+    r = upload_course(tmp_path, "demo")
+    assert r["ok"] == 1 and r["skip"] == 2
+    assert len(state["sources"]["nb1"]) == 3
+
+
+def test_force_ignores_manifest(monkeypatch, tmp_path):
+    _make_course(tmp_path)
+    state = {"notebooks": [], "sources": {}}
+    monkeypatch.setattr(notebook, "run_nlm", _fake_nlm(state))
+    upload_course(tmp_path, "demo")
+    r = upload_course(tmp_path, "demo", force=True)
+    assert r["ok"] == 2 and r["skip"] == 0
+    assert len(state["sources"]["nb1"]) == 4
+
+
+def test_resync_uses_source_list(monkeypatch, tmp_path):
+    _make_course(tmp_path)
+    state = {"notebooks": [], "sources": {}}
+    monkeypatch.setattr(notebook, "run_nlm", _fake_nlm(state))
+    upload_course(tmp_path, "demo")
+    r = upload_course(tmp_path, "demo", resync=True)
+    assert r["skip"] == 2 and r["ok"] == 0
+
+
 def test_upload_course_missing_downloads(tmp_path):
     try:
         upload_course(tmp_path, "nope")

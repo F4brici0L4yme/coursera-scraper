@@ -219,6 +219,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="re-upload even if a source with the same title exists",
     )
     p_nb.add_argument(
+        "--resync",
+        action="store_true",
+        help="ignore the local upload manifest and re-check against NotebookLM",
+    )
+    p_nb.add_argument(
         "--no-wait", action="store_true", help="don't wait for NotebookLM source processing"
     )
     p_nb.add_argument("--nlm-profile", default=None, help="nlm profile to use")
@@ -356,6 +361,7 @@ def cmd_notebook(args: argparse.Namespace) -> int:
                 notebook=args.notebook,
                 dry_run=args.dry_run,
                 force=args.force,
+                resync=args.resync,
                 wait=not args.no_wait,
                 profile=args.nlm_profile,
             )

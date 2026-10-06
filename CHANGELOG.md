@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Interactive TUI (Textual): course search, module selection, options, live
   download progress with throughput/ETA, and a "Mis descargas" library.
 - Gemini Notebook (NotebookLM) upload via the external `nlm` CLI: one notebook
-  per course, idempotent by source title, plus `notebook --all`.
+  per course, idempotent by source title, plus `notebook --all`. Re-runs use a
+  local `.nlm-manifest.json` to skip instantly and upload only new files
+  (`--force` re-uploads, `--resync` re-checks against NotebookLM).
 - `downloaded` command: local inventory of downloaded courses (`--json`).
 - `config` command and `~/.coursera-scraper/config.json` defaults.
 - `doctor` command: validates CAUTH, `nlm` login and reports disk space.

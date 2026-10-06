@@ -155,6 +155,30 @@ def existing_titles(notebook_id: str, profile: str | None = None) -> set[str]:
     return titles
 
 
+def _manifest_path(out_dir, slug: str) -> Path:
+    return Path(out_dir) / slug / ".nlm-manifest.json"
+
+
+def _load_manifest(path: Path, notebook_name: str) -> set[str]:
+    """Titles recorded for this notebook, or empty if absent/mismatched."""
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return set()
+    if data.get("notebook") != notebook_name:
+        return set()
+    return set(data.get("titles") or [])
+
+
+def _save_manifest(path: Path, notebook_name: str, titles: set[str]) -> None:
+    try:
+        path.write_text(json.dumps({"notebook": notebook_name, "titles": sorted(titles)}, indent=2))
+    except OSError:
+        pass
+
+
 def upload_course(
     out_dir,
     slug: str,
@@ -162,6 +186,7 @@ def upload_course(
     notebook: str | None = None,
     dry_run: bool = False,
     force: bool = False,
+    resync: bool = False,
     wait: bool = True,
     profile: str | None = None,
     progress=None,
@@ -171,6 +196,11 @@ def upload_course(
     Everything selected goes into one notebook named ``notebook`` (or the
     course slug by default); source titles carry the ``MM module / NN item``
     prefix so the module stays identifiable. ``notebook`` overrides the name.
+
+    A local manifest (``.nlm-manifest.json`` next to the downloads) records the
+    titles already uploaded so re-runs skip them without querying NotebookLM.
+    ``force`` re-uploads everything; ``resync`` ignores the manifest and
+    re-checks against NotebookLM.
     """
     course_dir = Path(out_dir) / slug
     if not course_dir.is_dir():
@@ -201,7 +231,17 @@ def upload_course(
 
     nb_id, created = ensure_notebook(nb_name, profile)
     results["notebooks"].append({"name": nb_name, "created": created})
-    known = set() if force else existing_titles(nb_id, profile)
+
+    manifest = _manifest_path(out_dir, slug)
+    if force:
+        known: set[str] = set()
+    else:
+        known = set() if resync else _load_manifest(manifest, nb_name)
+        if not known:
+            # first run (or resync): seed from the live source list
+            known = existing_titles(nb_id, profile)
+
+    uploaded: set[str] = set()
     for idx, mslug, mdir in modules:
         for path, title in _candidates(mdir, idx, mslug):
             if title in known and not force:
@@ -214,6 +254,7 @@ def upload_course(
                 if wait:
                     cmd.append("--wait")
                 run_nlm(*cmd, profile=profile)
+                uploaded.add(title)
                 results["ok"] += 1
                 status, error = "ok", None
             except NotebookError as exc:
@@ -221,4 +262,7 @@ def upload_course(
                 status, error = "failed", str(exc)
             if progress:
                 progress({"type": "file", "dest": title, "status": status, "error": error})
+
+    if not force and not dry_run:
+        _save_manifest(manifest, nb_name, known | uploaded)
     return results
