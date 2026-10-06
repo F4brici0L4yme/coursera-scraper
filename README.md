@@ -1,8 +1,13 @@
 # Coursera Scraper
 
-Downloads videos, transcripts, and readings for Coursera courses **your account is
-enrolled in**, into an organized local folder tree. No browser automation — it talks
-directly to the same internal `onDemand*` API the Coursera web app uses.
+[![CI](https://github.com/F4brici0L4yme/coursera-scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/F4brici0L4yme/coursera-scraper/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+
+Downloads videos, transcripts, readings, and slides for Coursera courses **your
+account is enrolled in**, into an organized local folder tree, and can upload them
+to Gemini Notebook (NotebookLM). No browser automation — it talks directly to the
+same internal `onDemand*` API the Coursera web app uses.
 
 ## Install (uv)
 
