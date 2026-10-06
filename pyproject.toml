@@ -31,7 +31,11 @@ target-version = "py310"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "RUF"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [dependency-groups]
 dev = [
+    "pytest>=9.0.0",
     "ruff>=0.16.7",
 ]
