@@ -15,10 +15,14 @@ same ones the SPA calls. Media URLs are pre-signed, so downloads work without lo
 - `src/coursera_scraper/downloader.py` — URL resolution + parallel file download.
 - `src/coursera_scraper/reading.py` — reading HTML/image/plain-text handling.
 - `src/coursera_scraper/notebook.py` — Gemini Notebook upload via the external `nlm`
-  CLI (subprocess, no new deps). One notebook per module; uploads `.txt`/`.pdf`/`.ipynb`,
+  CLI (subprocess, no new deps). One notebook per course; uploads `.txt`/`.pdf`/`.ipynb`,
   skips `.mp4`/`.html` twins/images. Re-runs skip existing titles (idempotent).
+- `src/coursera_scraper/inventory.py` — pure disk scan of `downloads/` (no network);
+  per-course/module file counts by kind + sizes. Used by `downloaded` and `notebook --all`.
 - `src/coursera_scraper/ui.py` — interactive TUI (Textual; optional `ui` extra).
-- `src/coursera_scraper/cli.py` — `coursera-scraper {auth,download,notebook}` + TUI launcher.
+  Course picker → module select → options → download progress, plus a "Mis descargas"
+  library (local inventory + per-module NotebookLM upload via `notebook.upload_course`).
+- `src/coursera_scraper/cli.py` — `coursera-scraper {auth,download,notebook,downloaded}` + TUI launcher.
 
 Key facts an agent would otherwise miss:
 

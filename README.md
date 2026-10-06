@@ -22,7 +22,9 @@ uv run coursera-scraper
 
 It walks you through: pick a course (search, or paste a slug/URL) → select modules →
 choose options (resolution, language, content types) → watch progress with live
-throughput and ETA. Requires `uv sync --extra ui`.
+throughput and ETA. Press `d` on the course list to open **Mis descargas**: your
+locally downloaded courses, with per-module upload to Gemini Notebook
+(requires `nlm login`, same as the `notebook` command). Requires `uv sync --extra ui`.
 
 The CLI subcommands (`download`, `auth`) remain available for scripting/automation.
 
@@ -68,7 +70,8 @@ Options: `--module` (index, slug, or comma-separated list), `--resolution best|1
 
 Send transcripts, readings, slides, and notebooks to Gemini Notebook (formerly
 NotebookLM) via the external [`nlm` CLI](https://github.com/jacob-bd/gemini-notebook-mcp-cli).
-One notebook is created per module (NotebookLM caps sources per notebook).
+One notebook is created per course (source titles carry the `MM module / NN item`
+prefix, so the module stays identifiable).
 
 ```bash
 uv tool install notebooklm-mcp-cli   # one-time: provides `nlm`
@@ -87,6 +90,15 @@ uv run coursera-scraper notebook some-course-slug --module 1 --notebook "Mi Note
 Re-runs skip sources whose titles already exist in the notebook. Videos (`.mp4`),
 reading images, and `.html` twins are not uploaded — transcripts carry the spoken
 content and `.txt` readings carry the text.
+
+To see what is downloaded and upload everything at once:
+
+```bash
+uv run coursera-scraper downloaded              # table: courses, modules, file counts, size
+uv run coursera-scraper downloaded --json       # same, as JSON (for scripting)
+uv run coursera-scraper notebook --all           # upload every downloaded course
+uv run coursera-scraper notebook --all --dry-run # preview the bulk upload
+```
 
 If uploads start failing with auth errors, re-login (`nlm login`) or refresh
 headlessly (`nlm auth refresh`); check status with `nlm login --check`. For a
@@ -113,7 +125,7 @@ downloads/<course-slug>/<MM>-<module-slug>/<LL>-<lesson-slug>/
   downloaded). Code blocks are preserved in the HTML.
 - **Phase 3 (implemented):** slides/PDFs (and attached notebooks) from videos.
 - **Notebook upload (implemented):** send transcripts, readings, and slides to
-  Gemini Notebook, one notebook per module — see above.
+  Gemini Notebook, one notebook per course — see above.
 - Quizzes (`staffGraded`/`ungradedAssignment`) and lab workspaces (`ungradedLab`)
   are detected but skipped — see [docs/adr/0002-quiz-limitations.md](docs/adr/0002-quiz-limitations.md).
 - Full-specialization support is intentionally not built yet.

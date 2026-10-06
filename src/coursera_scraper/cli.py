@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .api import CourseraClient, CourseraError
 from .downloader import download_course
+from .inventory import format_size, scan_downloads
 from .notebook import NotebookError, upload_course
 
 AUTH_FILE = Path.home() / ".coursera-scraper" / "auth.json"
@@ -156,7 +157,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_nb = sub.add_parser(
         "notebook", help="upload downloaded material to Gemini Notebook (via nlm)"
     )
-    p_nb.add_argument("course", help="course URL or slug (must already be downloaded)")
+    p_nb.add_argument(
+        "course",
+        nargs="?",
+        default=None,
+        help="course URL or slug (omit with --all; must already be downloaded)",
+    )
+    p_nb.add_argument("--all", action="store_true", help="upload every downloaded course")
     p_nb.add_argument(
         "--module",
         help="limit to modules: 1-based index, slug, or comma-separated list (e.g. 1,3)",
@@ -165,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_nb.add_argument(
         "--notebook",
         default=None,
-        help="single notebook name override (default: one notebook per module)",
+        help="notebook name (default: the course slug)",
     )
     p_nb.add_argument(
         "--dry-run", action="store_true", help="list what would be uploaded without calling nlm"
@@ -181,26 +188,87 @@ def build_parser() -> argparse.ArgumentParser:
     p_nb.add_argument("--nlm-profile", default=None, help="nlm profile to use")
     p_nb.set_defaults(func=cmd_notebook)
 
+    p_ls = sub.add_parser("downloaded", help="list locally downloaded courses")
+    p_ls.add_argument("--out", default="downloads", help="download root to scan")
+    p_ls.add_argument("--json", action="store_true", help="output as JSON")
+    p_ls.set_defaults(func=cmd_downloaded)
+
     return parser
 
 
-def cmd_notebook(args: argparse.Namespace) -> int:
-    slug = extract_slug(args.course)
-    results = upload_course(
-        args.out,
-        slug,
-        progress=_print_progress,
-        module_filter=_parse_modules(args.module),
-        notebook=args.notebook,
-        dry_run=args.dry_run,
-        force=args.force,
-        wait=not args.no_wait,
-        profile=args.nlm_profile,
+def cmd_downloaded(args: argparse.Namespace) -> int:
+    courses = scan_downloads(args.out)
+    if args.json:
+        print(json.dumps({"root": args.out, "courses": courses}, indent=2))
+        return 0
+    if not courses:
+        print(f"No downloaded courses found in {args.out}/.")
+        return 0
+    width = min(max(len(c["slug"]) for c in courses), 48)
+    header = (
+        f"{'course':<{width}}  {'mod':>3}  {'files':>5}  {'vid':>3}  "
+        f"{'trs':>3}  {'rdg':>3}  {'sld':>3}  {'img':>3}  {'size':>8}"
     )
-    for nb in results["notebooks"]:
-        print(f"{'created' if nb['created'] else 'reused'} notebook: {nb['name']}")
-    print(f"\nDone. ok={results['ok']} skipped={results['skip']} failed={results['failed']}")
-    return 1 if results["failed"] else 0
+    print(f"Downloaded courses (root: {args.out}/):")
+    print(header)
+    for c in courses:
+        f = c["files"]
+        line = (
+            f"{c['slug']:<{width}.{width}}  {len(c['modules']):>3}  "
+            f"{sum(f.values()):>5}  {f.get('videos', 0):>3}  {f.get('transcripts', 0):>3}  "
+            f"{f.get('readings', 0):>3}  {f.get('slides', 0):>3}  {f.get('images', 0):>3}  "
+            f"{format_size(c['size']):>8}"
+        )
+        print(line)
+        for m in c["modules"]:
+            print(f"  {m['index']:02d}-{m['slug']}")
+    return 0
+
+
+def cmd_notebook(args: argparse.Namespace) -> int:
+    if args.course is None and not args.all:
+        print("error: need a course or --all", file=sys.stderr)
+        return 2
+    if args.course is not None:
+        slugs = [extract_slug(args.course)]
+    else:
+        slugs = [c["slug"] for c in scan_downloads(args.out)]
+        if not slugs:
+            print(f"No downloaded courses found in {args.out}/.", file=sys.stderr)
+            return 1
+    filt = _parse_modules(args.module)
+    total = {"ok": 0, "skip": 0, "failed": 0}
+    failed = 0
+    for n, slug in enumerate(slugs):
+        if len(slugs) > 1:
+            print(f"\n=== {slug} ({n + 1}/{len(slugs)}) ===")
+        try:
+            results = upload_course(
+                args.out,
+                slug,
+                progress=_print_progress,
+                module_filter=filt,
+                notebook=args.notebook,
+                dry_run=args.dry_run,
+                force=args.force,
+                wait=not args.no_wait,
+                profile=args.nlm_profile,
+            )
+        except (CourseraError, NotebookError) as exc:
+            print(f"FAILED {slug}: {exc}", file=sys.stderr)
+            failed += 1
+            continue
+        for nb in results["notebooks"]:
+            print(f"{'created' if nb['created'] else 'reused'} notebook: {nb['name']}")
+        print(
+            f"Done {slug}. ok={results['ok']} skipped={results['skip']} failed={results['failed']}"
+        )
+        for key in total:
+            total[key] += results[key]
+        failed += 1 if results["failed"] else 0
+    if len(slugs) > 1:
+        print(f"\nTotal. ok={total['ok']} skipped={total['skip']} failed={total['failed']}")
+    return 1 if failed else 0
 
 
 def launch_tui() -> int:

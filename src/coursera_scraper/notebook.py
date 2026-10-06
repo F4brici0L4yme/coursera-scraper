@@ -1,8 +1,8 @@
 """Upload downloaded course material to Gemini Notebook via the ``nlm`` CLI.
 
 Design: shell out to ``nlm`` (from ``notebooklm-mcp-cli``) instead of
-reimplementing NotebookLM's internal API. One notebook per module, since
-NotebookLM caps the number of sources per notebook.
+reimplementing NotebookLM's internal API. One notebook per course (titles
+carry the module prefix, so Gemini knows which module each source is from).
 
 Uploadable files (already on disk under ``downloads/<slug>/``):
   ``*-transcript.txt``, ``*-reading.txt`` (not the ``.html`` twin),
@@ -166,10 +166,11 @@ def upload_course(
     profile: str | None = None,
     progress=None,
 ) -> dict:
-    """Upload a downloaded course (or modules) to Gemini Notebook(s).
+    """Upload a downloaded course (or modules) to a single Gemini Notebook.
 
-    Default: one notebook per module named ``"<slug> — M<MM> <module>"``;
-    ``notebook`` overrides with a single target notebook for everything.
+    Everything selected goes into one notebook named ``notebook`` (or the
+    course slug by default); source titles carry the ``MM module / NN item``
+    prefix so the module stays identifiable. ``notebook`` overrides the name.
     """
     course_dir = Path(out_dir) / slug
     if not course_dir.is_dir():
@@ -179,27 +180,29 @@ def upload_course(
     modules = _module_dirs(course_dir, module_filter)
 
     results = {"notebooks": [], "ok": 0, "skip": 0, "failed": 0}
+    nb_name = notebook or slug
     if dry_run:
         if shutil.which(NLM_BIN) is None:
             print(f"(note: {INSTALL_HINT})")
-        for idx, mslug, mdir in modules:
-            nb_name = notebook or f"{slug} — M{idx:02d} {_pretty(mslug)}"
-            cands = list(_candidates(mdir, idx, mslug))
-            print(f"[dry-run] notebook {nb_name!r}: {len(cands)} file(s)")
-            for path, title in cands:
-                print(f"  would upload: {title}  <-  {path.name}")
-                results["ok"] += 1
+        cands = [
+            (path, title)
+            for idx, mslug, mdir in modules
+            for path, title in _candidates(mdir, idx, mslug)
+        ]
+        print(f"[dry-run] notebook {nb_name!r}: {len(cands)} file(s)")
+        for path, title in cands:
+            print(f"  would upload: {title}  <-  {path.name}")
+            results["ok"] += 1
         return results
 
     total = sum(1 for _, _, mdir in modules for _ in _candidates(mdir, 0, ""))
     if progress:
         progress({"type": "start", "total": total})
 
+    nb_id, created = ensure_notebook(nb_name, profile)
+    results["notebooks"].append({"name": nb_name, "created": created})
+    known = set() if force else existing_titles(nb_id, profile)
     for idx, mslug, mdir in modules:
-        nb_name = notebook or f"{slug} — M{idx:02d} {_pretty(mslug)}"
-        nb_id, created = ensure_notebook(nb_name, profile)
-        results["notebooks"].append({"name": nb_name, "created": created})
-        known = set() if force else existing_titles(nb_id, profile)
         for path, title in _candidates(mdir, idx, mslug):
             if title in known and not force:
                 results["skip"] += 1
