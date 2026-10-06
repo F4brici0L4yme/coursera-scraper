@@ -12,6 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import __version__
 from .api import CourseraClient, CourseraError
 from .config import CONFIG_FILE, DEFAULTS, load_config, resolve, save_config
 from .downloader import RESOLUTION_ORDER, download_course
@@ -152,6 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="coursera-scraper",
         description="Download Coursera course media. Run with no command for the interactive TUI.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     p_auth = sub.add_parser("auth", help="save the CAUTH cookie locally")
