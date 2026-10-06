@@ -1,3 +1,3 @@
-"""Coursera scraper: download videos, subtitles and transcripts for enrolled courses."""
+"""Coursera scraper: download videos, transcripts, readings and slides for enrolled courses."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

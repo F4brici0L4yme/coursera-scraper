@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +18,7 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.events import DescendantFocus
 from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Button,
@@ -38,7 +40,10 @@ from textual.widgets.selection_list import Selection
 
 from .api import CourseraClient, CourseraError
 from .cli import AUTH_FILE, extract_slug, load_cauth
+from .config import load_config
 from .downloader import RESOLUTION_ORDER, download_course
+from .inventory import format_size, scan_downloads
+from .notebook import NotebookError, upload_course
 
 RESOLUTIONS = ["best", *RESOLUTION_ORDER]
 
@@ -149,6 +154,8 @@ class State:
     include_images: bool = True
     include_slides: bool = True
     out_dir: str = "downloads"
+    lib_slug: str | None = None
+    lib_modules: list = field(default_factory=list)
 
 
 class CourseraTUI(App):
@@ -160,7 +167,12 @@ class CourseraTUI(App):
         self.theme = "nord"
         self.cauth = cauth if cauth is not None else load_cauth(None)
         self.client = CourseraClient(cauth=self.cauth)
-        self.state = State()
+        cfg = load_config()
+        self.state = State(
+            resolution=cfg.get("resolution", "best"),
+            lang=cfg.get("lang", "en"),
+            out_dir=cfg.get("out_dir", "downloads"),
+        )
 
     def on_mount(self) -> None:
         self.push_screen(CourseScreen())
@@ -173,7 +185,9 @@ class CourseraTUI(App):
 class CourseScreen(Screen):
     BINDINGS = (
         Binding("a", "auth", "Set CAUTH"),
+        Binding("d", "library", "Mis descargas"),
         Binding("q", "quit", "Quit"),
+        Binding("escape", "unfocus", "Unfocus"),
         Binding("question_mark", "help", "Help"),
     )
 
@@ -205,7 +219,7 @@ class CourseScreen(Screen):
             status.update("[dim]No se encontraron cursos enrolados.[/]")
             return
         status.update(
-            f"[dim]{len(courses)} cursos enrolados · pulsa [bold]a[/] para re-configurar CAUTH[/]"
+            f"[dim]{len(courses)} cursos enrolados · [bold]a[/] CAUTH · [bold]d[/] mis descargas[/]"
         )
         self._courses = courses
         self._refresh("")
@@ -230,7 +244,10 @@ class CourseScreen(Screen):
             self.app.state.slug = slug
             self.app.push_screen(ModulesScreen())
         else:
-            self.query_one("#courses", OptionList).focus()
+            opts = self.query_one("#courses", OptionList)
+            opts.focus()
+            if opts.highlighted is None and opts.option_count:
+                opts.highlighted = 0
 
     def _refresh(self, query: str) -> None:
         courses = getattr(self, "_courses", [])
@@ -240,6 +257,12 @@ class CourseScreen(Screen):
             if _fuzzy_match(query, f"{name} {slug}"):
                 opts.add_option(Option(f"{name}  [dim]· {slug}[/]", id=slug))
 
+    @on(DescendantFocus, "#courses")
+    def _highlight_first(self) -> None:
+        opts = self.query_one("#courses", OptionList)
+        if opts.highlighted is None and opts.option_count:
+            opts.highlighted = 0
+
     @on(OptionList.OptionSelected, "#courses")
     def on_course_selected(self, event: OptionList.OptionSelected) -> None:
         self.app.state.slug = event.option_id
@@ -247,6 +270,12 @@ class CourseScreen(Screen):
 
     def action_auth(self) -> None:
         self.app.push_screen(AuthModal())
+
+    def action_library(self) -> None:
+        self.app.push_screen(LibraryScreen())
+
+    def action_unfocus(self) -> None:
+        self.query_one("#courses", OptionList).focus()
 
     def action_quit(self) -> None:
         self.app.exit()
@@ -256,6 +285,8 @@ class CourseScreen(Screen):
 
 
 class AuthModal(ModalScreen):
+    BINDINGS = (Binding("escape", "cancel", "Cancel"),)
+
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
             yield Label("Pega tu cookie CAUTH (del navegador, cookie CAUTH de coursera.org):")
@@ -275,6 +306,9 @@ class AuthModal(ModalScreen):
 
     @on(Button.Pressed, "#cancel")
     def on_cancel(self) -> None:
+        self.dismiss()
+
+    def action_cancel(self) -> None:
         self.dismiss()
 
 
@@ -364,11 +398,13 @@ class OptionsScreen(Screen):
         yield Header(show_clock=True)
         with VerticalScroll():
             yield Label("Resolución", classes="field-label")
-            yield Select([(r, r) for r in RESOLUTIONS], value="best", id="resolution")
+            yield Select(
+                [(r, r) for r in RESOLUTIONS], value=self.app.state.resolution, id="resolution"
+            )
             yield Label("Idioma", classes="field-label")
-            yield Input(value="en", id="lang")
+            yield Input(value=self.app.state.lang, id="lang")
             yield Label("Directorio de salida", classes="field-label")
-            yield Input(value="downloads", id="outdir")
+            yield Input(value=self.app.state.out_dir, id="outdir")
             yield Label("Contenido a descargar", classes="field-label")
             with Horizontal(classes="toggle-row"):
                 yield Label("Videos")
@@ -407,7 +443,10 @@ class OptionsScreen(Screen):
         self.app.push_screen(DownloadScreen())
 
     def action_back(self) -> None:
-        self.app.pop_screen()
+        if isinstance(self.focused, Input):
+            self.set_focus(None)
+        else:
+            self.app.pop_screen()
 
 
 class DownloadScreen(Screen):
@@ -533,6 +572,239 @@ class DownloadScreen(Screen):
             self.app.pop_screen()
 
 
+class LibraryScreen(Screen):
+    """Downloaded courses on disk, with upload to Gemini Notebook."""
+
+    BINDINGS = (
+        Binding("escape", "back", "Back"),
+        Binding("r", "refresh", "Refresh"),
+    )
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Static("[bold]Mis descargas[/]", id="subtitle")
+        yield Static("", id="status")
+        yield OptionList(id="courses")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._refresh()
+
+    def _refresh(self) -> None:
+        courses = scan_downloads(self.app.state.out_dir)
+        status = self.query_one("#status", Static)
+        opts = self.query_one("#courses", OptionList)
+        opts.clear_options()
+        if not courses:
+            status.update(
+                f"[dim]No hay descargas en {self.app.state.out_dir}/. Descarga algo primero.[/]"
+            )
+            return
+        status.update(
+            f"[dim]{len(courses)} cursos en disco · [bold]enter[/] módulos · "
+            "[bold]r[/] refrescar[/]"
+        )
+        for c in courses:
+            nfiles = sum(c["files"].values())
+            prompt = (
+                f"{c['slug']}  [dim]{len(c['modules'])} mód · "
+                f"{nfiles} arch · {format_size(c['size'])}[/]"
+            )
+            opts.add_option(Option(prompt, id=c["slug"]))
+
+    def action_refresh(self) -> None:
+        self._refresh()
+
+    @on(DescendantFocus, "#courses")
+    def _highlight_first(self) -> None:
+        opts = self.query_one("#courses", OptionList)
+        if opts.highlighted is None and opts.option_count:
+            opts.highlighted = 0
+
+    @on(OptionList.OptionSelected, "#courses")
+    def on_course_selected(self, event: OptionList.OptionSelected) -> None:
+        self.app.state.lib_slug = event.option_id
+        self.app.push_screen(LibraryModulesScreen())
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+
+class LibraryModulesScreen(Screen):
+    BINDINGS = (
+        Binding("escape", "back", "Back"),
+        Binding("a", "all", "All/None"),
+        Binding("enter", "continue", "Continue", priority=True),
+    )
+
+    def __init__(self):
+        super().__init__()
+        self._loaded = False
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Static("Cargando módulos…", id="status")
+        yield SelectionList[str](id="modules")
+        with Horizontal(classes="actions"):
+            yield Button("Subir a NotebookLM", variant="primary", id="continue")
+        yield Static("", id="hint", classes="hint")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._populate()
+
+    def _populate(self) -> None:
+        slug = self.app.state.lib_slug
+        course = next(
+            (c for c in scan_downloads(self.app.state.out_dir) if c["slug"] == slug),
+            None,
+        )
+        if course is None:
+            self.query_one("#status", Static).update(
+                f"[red]Curso no encontrado en disco: {slug}[/]"
+            )
+            return
+        sel = self.query_one("#modules", SelectionList)
+        for m in course["modules"]:
+            label = (
+                f"{m['index']:02d} {m['slug']}  "
+                f"[dim]{sum(m['files'].values())} arch · {format_size(m['size'])}[/]"
+            )
+            sel.add_option(Selection(label, m["slug"], id=str(m["index"]), initial_state=True))
+        self.query_one("#status", Static).update(
+            f"[bold]{len(course['modules'])}[/] módulos · [dim]espacio[/] selecciona · "
+            "[dim]a[/] todos/none · [dim]enter[/] subir"
+        )
+        self._loaded = True
+
+    def action_all(self) -> None:
+        if not self._loaded:
+            return
+        sel = self.query_one("#modules", SelectionList)
+        if sel.selected:
+            sel.deselect_all()
+        else:
+            sel.select_all()
+
+    @on(Button.Pressed, "#continue")
+    def on_continue_pressed(self) -> None:
+        self.action_continue()
+
+    def action_continue(self) -> None:
+        if not self._loaded:
+            return
+        sel = self.query_one("#modules", SelectionList)
+        self.app.state.lib_modules = list(sel.selected)
+        self.app.push_screen(NotebookUploadScreen())
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+
+class NotebookUploadScreen(Screen):
+    BINDINGS = (Binding("q", "quit", "Quit"), Binding("escape", "back", "Back"))
+
+    def __init__(self):
+        super().__init__()
+        self._total = 0
+        self._done = 0
+        self._started: float | None = None
+        self._finished = False
+        self._ok = 0
+        self._skip = 0
+        self._failed = 0
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Static("Subiendo a NotebookLM…", id="title")
+        yield ProgressBar(id="overall", show_eta=False, show_percentage=True)
+        yield Static("", id="stats")
+        yield RichLog(id="log", markup=True, highlight=True, wrap=True)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._start()
+
+    @work(thread=True)
+    def _start(self) -> None:
+        if shutil.which("nlm") is None:
+            self.app.call_from_thread(
+                self._fail,
+                "No se encontró el comando 'nlm'. "
+                "Instálalo con: uv tool install notebooklm-mcp-cli",
+            )
+            return
+        s = self.app.state
+        filt = list(s.lib_modules) or None
+        try:
+            results = upload_course(
+                s.out_dir,
+                s.lib_slug,
+                module_filter=filt,
+                progress=self._on_progress,
+            )
+        except NotebookError as exc:
+            self.app.call_from_thread(self._fail, str(exc))
+            return
+        self.app.call_from_thread(self._finish, results)
+
+    def _on_progress(self, event: dict) -> None:
+        self.app.call_from_thread(self._apply_event, event)
+
+    def _apply_event(self, event: dict) -> None:
+        t = event["type"]
+        if t == "start":
+            self._total = event["total"]
+            self._started = time.monotonic()
+            bar = self.query_one("#overall", ProgressBar)
+            bar.total = self._total
+            self.query_one("#title", Static).update(
+                f"[bold]Subiendo[/] {self.app.state.lib_slug} — {self._total} fuentes"
+            )
+        elif t == "file":
+            self._done += 1
+            if event["status"] == "ok":
+                self._ok += 1
+            elif event["status"] == "skip":
+                self._skip += 1
+            else:
+                self._failed += 1
+            self.query_one("#overall", ProgressBar).progress = self._done
+            log = self.query_one("#log", RichLog)
+            dest = event["dest"]
+            if event["status"] == "ok":
+                log.write(f"[green]✓[/] {dest}")
+            elif event["status"] == "skip":
+                log.write(f"[yellow]↷[/] {dest} [dim](ya existe)[/]")
+            else:
+                log.write(f"[red]✗[/] {dest} [red]{event['error']}[/]")
+
+    def _fail(self, message: str) -> None:
+        self._finished = True
+        self.query_one("#title", Static).update(f"[red]Error: {message}[/]")
+
+    def _finish(self, results: dict) -> None:
+        self._finished = True
+        bar = self.query_one("#overall", ProgressBar)
+        bar.progress = bar.total or 1
+        lines = [
+            f"[bold]Listo.[/] ok={results.get('ok', 0)} "
+            f"skip={results.get('skip', 0)} failed={results.get('failed', 0)}"
+        ]
+        for nb in results.get("notebooks", []):
+            state = "creado" if nb["created"] else "reutilizado"
+            lines.append(f"[dim]Notebook {state}: {nb['name']}[/]")
+        lines.append("[dim]pulsa [bold]esc[/] para volver, [bold]q[/] para salir[/]")
+        self.query_one("#title", Static).update("\n".join(lines))
+
+    def action_quit(self) -> None:
+        self.app.exit()
+
+    def action_back(self) -> None:
+        if self._finished:
+            self.app.pop_screen()
+
+
 class HelpScreen(Screen):
     BINDINGS = (Binding("escape", "back", "Back"), Binding("q", "back", "Back"))
 
@@ -544,7 +816,9 @@ class HelpScreen(Screen):
             "  enter           seleccionar / continuar\n"
             "  espacio         marcar módulo\n"
             "  a               todos/none (módulos) · configurar CAUTH (cursos)\n"
-            "  esc             volver\n"
+            "  d               mis descargas (cursos)\n"
+            "  r               refrescar (mis descargas)\n"
+            "  esc             salir del campo de texto / volver\n"
             "  q               salir\n"
             "  ctrl+p          paleta de comandos\n",
             id="summary",

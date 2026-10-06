@@ -15,15 +15,24 @@ same ones the SPA calls. Media URLs are pre-signed, so downloads work without lo
 - `src/coursera_scraper/downloader.py` — URL resolution + parallel file download.
 - `src/coursera_scraper/reading.py` — reading HTML/image/plain-text handling.
 - `src/coursera_scraper/notebook.py` — Gemini Notebook upload via the external `nlm`
-  CLI (subprocess, no new deps). One notebook per module; uploads `.txt`/`.pdf`/`.ipynb`,
-  skips `.mp4`/`.html` twins/images. Re-runs skip existing titles (idempotent).
+  CLI (subprocess, no new deps). One notebook per course; uploads `.txt`/`.pdf`/`.ipynb`,
+  skips `.mp4`/`.html` twins/images. A local `.nlm-manifest.json` (in the course
+  download dir) makes re-runs skip instantly and upload only new files; `--force`
+  re-uploads, `--resync` re-checks against NotebookLM.
+- `src/coursera_scraper/inventory.py` — pure disk scan of `downloads/` (no network);
+  per-course/module file counts by kind + sizes. Used by `downloaded` and `notebook --all`.
 - `src/coursera_scraper/ui.py` — interactive TUI (Textual; optional `ui` extra).
-- `src/coursera_scraper/cli.py` — `coursera-scraper {auth,download,notebook}` + TUI launcher.
+  Course picker → module select → options → download progress, plus a "Mis descargas"
+  library (local inventory + per-module NotebookLM upload via `notebook.upload_course`).
+- `src/coursera_scraper/cli.py` — `coursera-scraper {auth,download,notebook,downloaded}` + TUI launcher.
 
 Key facts an agent would otherwise miss:
 
 - `onDemandCourseMaterials.v1` is **deprecated**; use **`.v2`** (response keys end in
   `.v2`, items use `contentSummary` not `content`).
+- Specializations resolve via `onDemandSpecializations.v1?q=slug&slug={slug}` →
+  `linked.courses.v1[].slug`; `download` loops those course slugs. `/specializations/`
+  URLs auto-detect; `--specialization` forces it.
 - Lecture media comes from `onDemandLectureVideos.v1/{courseId}~{itemId}` using the
   **item id** (the `item~<id>` segments in a lesson's `elementIds`), not a video id.
 - Transcript URLs are **relative** (`/api/subtitleAssetProxy.v1/...`) and must

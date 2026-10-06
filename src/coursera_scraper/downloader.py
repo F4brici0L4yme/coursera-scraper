@@ -159,7 +159,11 @@ def _download_file(
     progress=None,
     retries: int = 3,
 ) -> str:
-    """Download a single file; return 'ok' or 'skip'. Raises on final failure."""
+    """Download a single file; return 'ok' or 'skip'. Raises on final failure.
+
+    Interrupted transfers leave a ``.part`` file; a later run resumes it with an
+    HTTP ``Range`` request when the server supports it.
+    """
     if dest.exists() and dest.stat().st_size > 0:
         return "skip"
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -172,11 +176,20 @@ def _download_file(
     last_err: Exception | None = None
     for attempt in range(retries):
         try:
-            with requests.get(url, stream=True, timeout=(10, 300), cookies=cookies) as resp:
+            resume_from = tmp.stat().st_size if tmp.exists() else 0
+            headers = {"Range": f"bytes={resume_from}-"} if resume_from else None
+            with requests.get(
+                url, stream=True, timeout=(10, 300), cookies=cookies, headers=headers
+            ) as resp:
+                if resp.status_code == 416 and resume_from:
+                    # requested range past EOF -> the .part is already complete
+                    tmp.replace(dest)
+                    return "ok"
                 resp.raise_for_status()
+                append = resume_from > 0 and resp.status_code == 206
                 buf = 0
                 last_emit = time.monotonic()
-                with open(tmp, "wb") as f:
+                with open(tmp, "ab" if append else "wb") as f:
                     for chunk in resp.iter_content(chunk_size=1 << 16):
                         f.write(chunk)
                         if progress:
@@ -192,7 +205,7 @@ def _download_file(
             return "ok"
         except Exception as exc:
             last_err = exc
-            tmp.unlink(missing_ok=True)
+            # keep any partial .part so the next attempt can resume it
             time.sleep(2**attempt)
     raise CourseraError(f"Download failed after {retries} attempts: {last_err}") from last_err
 

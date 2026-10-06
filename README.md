@@ -1,8 +1,13 @@
 # Coursera Scraper
 
-Downloads videos, transcripts, and readings for Coursera courses **your account is
-enrolled in**, into an organized local folder tree. No browser automation — it talks
-directly to the same internal `onDemand*` API the Coursera web app uses.
+[![CI](https://github.com/F4brici0L4yme/coursera-scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/F4brici0L4yme/coursera-scraper/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+
+Downloads videos, transcripts, readings, and slides for Coursera courses **your
+account is enrolled in**, into an organized local folder tree, and can upload them
+to Gemini Notebook (NotebookLM). No browser automation — it talks directly to the
+same internal `onDemand*` API the Coursera web app uses.
 
 ## Install (uv)
 
@@ -10,6 +15,28 @@ directly to the same internal `onDemand*` API the Coursera web app uses.
 uv sync                     # creates .venv, installs deps + the `coursera-scraper` script
 uv sync --extra ui          # add Textual for the interactive TUI
 uv sync --extra hls         # add yt-dlp for courses that only serve HLS/DASH streams
+```
+
+## Shell completions
+
+Tab-completion is available via `argcomplete` (bundled). Register once in your shell:
+
+```bash
+# bash — add to ~/.bashrc
+eval "$(register-python-argcomplete coursera-scraper)"
+
+# zsh — add to ~/.zshrc
+autoload -U bashcompinit && bashcompinit
+eval "$(register-python-argcomplete coursera-scraper)"
+```
+
+## Configuration
+
+Defaults can be stored in `~/.coursera-scraper/config.json` (flags still win):
+
+```bash
+uv run coursera-scraper config --resolution 720p --lang en --out downloads --concurrency 5
+uv run coursera-scraper doctor    # diagnose config, CAUTH, nlm and disk
 ```
 
 ## Interactive TUI
@@ -22,7 +49,9 @@ uv run coursera-scraper
 
 It walks you through: pick a course (search, or paste a slug/URL) → select modules →
 choose options (resolution, language, content types) → watch progress with live
-throughput and ETA. Requires `uv sync --extra ui`.
+throughput and ETA. Press `d` on the course list to open **Mis descargas**: your
+locally downloaded courses, with per-module upload to Gemini Notebook
+(requires `nlm login`, same as the `notebook` command). Requires `uv sync --extra ui`.
 
 The CLI subcommands (`download`, `auth`) remain available for scripting/automation.
 
@@ -58,7 +87,14 @@ uv run coursera-scraper download some-course-slug --module 1,3
 
 # lower resolution to save space
 uv run coursera-scraper download some-course-slug --resolution 720p
+
+# a whole specialization (all its courses); --module applies to each course
+uv run coursera-scraper download https://www.coursera.org/specializations/ibm-ai-workflow
+uv run coursera-scraper download ibm-ai-workflow --specialization
 ```
+
+Interrupted downloads leave a `.part` file and resume automatically (HTTP
+`Range`) on the next run; already-downloaded files are skipped.
 
 Options: `--module` (index, slug, or comma-separated list), `--resolution best|1080p|720p|540p|360p|240p`, `--lang en`,
 `--out downloads`, `--concurrency 3`, `--no-video`, `--no-transcript`,
@@ -68,7 +104,8 @@ Options: `--module` (index, slug, or comma-separated list), `--resolution best|1
 
 Send transcripts, readings, slides, and notebooks to Gemini Notebook (formerly
 NotebookLM) via the external [`nlm` CLI](https://github.com/jacob-bd/gemini-notebook-mcp-cli).
-One notebook is created per module (NotebookLM caps sources per notebook).
+One notebook is created per course (source titles carry the `MM module / NN item`
+prefix, so the module stays identifiable).
 
 ```bash
 uv tool install notebooklm-mcp-cli   # one-time: provides `nlm`
@@ -84,9 +121,21 @@ uv run coursera-scraper notebook some-course-slug --module 1 --force
 uv run coursera-scraper notebook some-course-slug --module 1 --notebook "Mi Notebook"
 ```
 
-Re-runs skip sources whose titles already exist in the notebook. Videos (`.mp4`),
-reading images, and `.html` twins are not uploaded — transcripts carry the spoken
-content and `.txt` readings carry the text.
+Re-runs skip sources already uploaded, tracked in a local
+`downloads/<course>/.nlm-manifest.json` (so re-runs are instant and only new
+files are uploaded). If sources changed directly in NotebookLM, use `--resync`
+to re-check against it. Videos (`.mp4`), reading images, and `.html` twins are
+not uploaded — transcripts carry the spoken content and `.txt` readings carry
+the text.
+
+To see what is downloaded and upload everything at once:
+
+```bash
+uv run coursera-scraper downloaded              # table: courses, modules, file counts, size
+uv run coursera-scraper downloaded --json       # same, as JSON (for scripting)
+uv run coursera-scraper notebook --all           # upload every downloaded course
+uv run coursera-scraper notebook --all --dry-run # preview the bulk upload
+```
 
 If uploads start failing with auth errors, re-login (`nlm login`) or refresh
 headlessly (`nlm auth refresh`); check status with `nlm login --check`. For a
@@ -113,7 +162,7 @@ downloads/<course-slug>/<MM>-<module-slug>/<LL>-<lesson-slug>/
   downloaded). Code blocks are preserved in the HTML.
 - **Phase 3 (implemented):** slides/PDFs (and attached notebooks) from videos.
 - **Notebook upload (implemented):** send transcripts, readings, and slides to
-  Gemini Notebook, one notebook per module — see above.
+  Gemini Notebook, one notebook per course — see above.
 - Quizzes (`staffGraded`/`ungradedAssignment`) and lab workspaces (`ungradedLab`)
   are detected but skipped — see [docs/adr/0002-quiz-limitations.md](docs/adr/0002-quiz-limitations.md).
 - Full-specialization support is intentionally not built yet.
