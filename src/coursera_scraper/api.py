@@ -50,6 +50,11 @@ LECTURE_ASSETS = (
 
 ASSETS_V1 = BASE + "/api/assets.v1?ids={ids}"
 
+SPECIALIZATIONS = (
+    BASE + "/api/onDemandSpecializations.v1?q=slug&slug={slug}"
+    "&fields=name,courseIds&includes=courseIds"
+)
+
 
 class CourseraError(Exception):
     """Base error for API failures."""
@@ -220,6 +225,18 @@ class CourseraClient:
             if url:
                 files.append({"name": name, "url": url, "type_name": element.get("typeName")})
         return files
+
+    def get_specialization(self, slug: str) -> tuple[str, list[str]]:
+        """Return ``(name, [course_slug, ...])`` for a specialization slug."""
+        data = self._get_json(SPECIALIZATIONS.format(slug=slug))
+        elements = data.get("elements") or []
+        if not elements:
+            raise CourseraError(f"Specialization not found: {slug}")
+        name = elements[0].get("name") or slug
+        courses = [
+            c.get("slug") for c in (data.get("linked") or {}).get("courses.v1", []) if c.get("slug")
+        ]
+        return name, courses
 
     def enrolled_courses(self) -> list[tuple[str, str]]:
         """Return the account's enrolled courses as ``(slug, name)`` pairs (needs CAUTH)."""

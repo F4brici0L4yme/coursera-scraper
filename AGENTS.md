@@ -28,6 +28,9 @@ Key facts an agent would otherwise miss:
 
 - `onDemandCourseMaterials.v1` is **deprecated**; use **`.v2`** (response keys end in
   `.v2`, items use `contentSummary` not `content`).
+- Specializations resolve via `onDemandSpecializations.v1?q=slug&slug={slug}` →
+  `linked.courses.v1[].slug`; `download` loops those course slugs. `/specializations/`
+  URLs auto-detect; `--specialization` forces it.
 - Lecture media comes from `onDemandLectureVideos.v1/{courseId}~{itemId}` using the
   **item id** (the `item~<id>` segments in a lesson's `elementIds`), not a video id.
 - Transcript URLs are **relative** (`/api/subtitleAssetProxy.v1/...`) and must

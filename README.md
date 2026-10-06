@@ -82,6 +82,10 @@ uv run coursera-scraper download some-course-slug --module 1,3
 
 # lower resolution to save space
 uv run coursera-scraper download some-course-slug --resolution 720p
+
+# a whole specialization (all its courses); --module applies to each course
+uv run coursera-scraper download https://www.coursera.org/specializations/ibm-ai-workflow
+uv run coursera-scraper download ibm-ai-workflow --specialization
 ```
 
 Options: `--module` (index, slug, or comma-separated list), `--resolution best|1080p|720p|540p|360p|240p`, `--lang en`,

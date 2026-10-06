@@ -21,6 +21,18 @@ from .notebook import NotebookError, upload_course
 AUTH_FILE = Path.home() / ".coursera-scraper" / "auth.json"
 
 _LEARN_RE = re.compile(r"/learn/([^/?#]+)")
+_SPEC_RE = re.compile(r"/specializations/([^/?#]+)")
+
+
+def classify_target(arg: str, specialization_flag: bool) -> tuple[str, str]:
+    """Return ``("course"|"specialization", slug)`` for a slug or URL."""
+    if arg.startswith("http"):
+        m = _SPEC_RE.search(arg)
+        if m:
+            return "specialization", m.group(1)
+        return "course", extract_slug(arg)
+    slug = arg.strip("/")
+    return ("specialization" if specialization_flag else "course"), slug
 
 
 def _parse_modules(raw: str | None):
@@ -71,7 +83,6 @@ def _print_progress(event: dict) -> None:
 
 
 def cmd_download(args: argparse.Namespace) -> int:
-    slug = extract_slug(args.course)
     cauth = load_cauth(args.cauth)
     if not cauth:
         print(
@@ -81,8 +92,38 @@ def cmd_download(args: argparse.Namespace) -> int:
         )
 
     client = CourseraClient(cauth=cauth)
-    print(f"Resolving course '{slug}' ...")
+    cfg = load_config()
+    kind, slug = classify_target(args.course, args.specialization)
+    opts = dict(
+        progress=_print_progress,
+        module_filter=_parse_modules(args.module),
+        resolution=resolve(cfg, "resolution", args.resolution),
+        lang=resolve(cfg, "lang", args.lang),
+        out_dir=Path(resolve(cfg, "out_dir", args.out)),
+        include_video=not args.no_video,
+        include_transcript=not args.no_transcript,
+        include_readings=not args.no_readings,
+        include_images=not args.no_images,
+        include_slides=not args.no_slides,
+        concurrency=resolve(cfg, "concurrency", args.concurrency),
+        cauth=cauth,
+    )
 
+    if kind == "specialization":
+        name, course_slugs = client.get_specialization(slug)
+        if not course_slugs:
+            print(f"No courses found in specialization '{name}'.", file=sys.stderr)
+            return 1
+        print(f"Specialization '{name}': {len(course_slugs)} courses")
+        failed = 0
+        for i, course_slug in enumerate(course_slugs, 1):
+            print(f"\n=== {course_slug} ({i}/{len(course_slugs)}) ===")
+            r = download_course(client, course_slug, **opts)
+            print(f"Done {course_slug}. ok={r['ok']} skip={r['skip']} failed={r['failed']}")
+            failed += 1 if r["failed"] else 0
+        return 1 if failed else 0
+
+    print(f"Resolving course '{slug}' ...")
     if cauth:
         try:
             enrolled = client.enrolled_slugs()
@@ -94,30 +135,7 @@ def cmd_download(args: argparse.Namespace) -> int:
         except CourseraError as exc:
             print(f"warning: could not verify enrollment ({exc})", file=sys.stderr)
 
-    module_filter = _parse_modules(args.module)
-    cfg = load_config()
-    resolution = resolve(cfg, "resolution", args.resolution)
-    lang = resolve(cfg, "lang", args.lang)
-    out_dir = resolve(cfg, "out_dir", args.out)
-    concurrency = resolve(cfg, "concurrency", args.concurrency)
-
-    results = download_course(
-        client,
-        slug,
-        progress=_print_progress,
-        module_filter=module_filter,
-        resolution=resolution,
-        lang=lang,
-        out_dir=Path(out_dir),
-        include_video=not args.no_video,
-        include_transcript=not args.no_transcript,
-        include_readings=not args.no_readings,
-        include_images=not args.no_images,
-        include_slides=not args.no_slides,
-        concurrency=concurrency,
-        cauth=cauth,
-    )
-
+    results = download_course(client, slug, **opts)
     print(
         f"\nDone. tasks={results['tasks']} ok={results['ok']} "
         f"skipped={results['skip']} failed={results['failed']} "
@@ -141,7 +159,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_auth.set_defaults(func=cmd_auth)
 
     p_dl = sub.add_parser("download", help="download a course (or one module)")
-    p_dl.add_argument("course", help="course URL or slug")
+    p_dl.add_argument("course", help="course/specialization URL or slug")
+    p_dl.add_argument(
+        "--specialization",
+        action="store_true",
+        help="treat the argument as a specialization slug (download all its courses)",
+    )
     p_dl.add_argument(
         "--module",
         help="limit to modules: 1-based index, slug, or comma-separated list (e.g. 1,3)",
